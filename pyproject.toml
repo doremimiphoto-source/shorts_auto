@@ -1,0 +1,79 @@
+[project]
+name = "shorts-auto"
+version = "1.0.0"
+description = "한국어 사연·반전 스토리텔링 YouTube Shorts 완전 자동화 파이프라인"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "shorts-auto" }]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ==================== 코드 품질 ====================
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", "build", "dist", "output", "logs", "data"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "S",    # flake8-bandit (보안)
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "S101",  # assert 사용 허용 (테스트)
+    "S603",  # subprocess 호출 (FFmpeg/Piper 의도적 사용)
+    "S607",  # 부분 경로 실행 (winget 환경 PATH 의존)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ==================== 타입 체크 ====================
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+no_implicit_optional = true
+ignore_missing_imports = true
+exclude = ["tests/", "build/", "dist/"]
+
+# ==================== 테스트 ====================
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: 외부 API/네트워크가 필요한 통합 테스트",
+    "slow: 실행 시간이 긴 테스트 (Whisper, FFmpeg 렌더링)",
+]
+asyncio_mode = "auto"

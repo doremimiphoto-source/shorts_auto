@@ -1,0 +1,290 @@
+# ==================== Shorts Auto Pipeline 설정 ====================
+# 이 파일을 `config.yaml`로 복사한 뒤 환경에 맞게 수정한다.
+# 비밀 정보(API 키)는 본 파일이 아닌 `.env`에 저장한다.
+# ===================================================================
+
+app:
+  name: shorts-auto
+  version: 1.0.0
+  timezone: Asia/Seoul
+
+# ---------- 파이프라인 (FR-7) ----------
+pipeline:
+  daily_target_count: 3                # 일 업로드 목표 (KPI: 3개월 3건/일, 6개월 5건/일)
+  schedule_times: ["09:00", "15:00", "21:00"]   # KST 기준 실행 시각 (Windows 작업 스케줄러)
+  upload_jitter_minutes: 20            # 업로드 간격 ±20분 랜덤화 (FR-6.9)
+  lock_file: data/pipeline.lock
+  killswitch_file: data/killswitch.flag
+
+# ---------- 소재 수집 (FR-1) ----------
+crawler:
+  motif_min_length: 200
+  motif_max_length: 1500
+  rate_limit_seconds: 3                # 도메인별 1 req / 3 sec (FR-1.4)
+  user_agent: "ShortsAutoBot/1.0 (+https://example.com/contact)"
+  retry_max: 3
+  retry_backoff_base: 2                # 지수 백오프 base (sec)
+  raw_text_retention_hours: 24         # 원문 24시간 내 자동 삭제 (FR-1.6)
+  duplicate_threshold_cosine: 0.85     # ko-sroberta 임베딩 코사인 유사도 (FR-1.5)
+  sources:
+    # 1순위: LLM 완전 창작 (테마/키워드만 입력)
+    - kind: llm_creator
+      enabled: true
+      themes:
+        - 직장 사연
+        - 가족 갈등
+        - 친구 배신
+        - 첫사랑 회상
+        - 이웃 사연
+    # 2순위: Reddit CC-BY 호환 서브레딧
+    - kind: reddit
+      enabled: false                   # Reddit API 키 발급 후 true
+      subreddits:
+        - tifu
+        - MaliciousCompliance
+        - pettyrevenge
+
+# ---------- 대본 생성 (FR-2) ----------
+rewriter:
+  # GPU 미보유 환경: 클라우드 무료 API 우선
+  primary: gemini                      # gemini | groq | ollama
+  fallback_chain: [gemini, groq, ollama]
+
+  gemini:
+    model: gemini-2.5-flash
+    rpm_limit: 15                      # 자율 제한
+    rpd_limit: 1500
+    temperature: 0.85
+    max_output_tokens: 1024
+
+  groq:
+    model: llama-3.1-8b-instant
+    rpm_limit: 30
+    temperature: 0.85
+    max_tokens: 1024
+
+  ollama:
+    model: gemma2:2b
+    base_url: http://127.0.0.1:11434
+    temperature: 0.85
+
+  output:
+    target_korean_chars: 280           # 한국어 약 250~300자 (FR-2.1)
+    sections: [hook, body, twist]
+    section_seconds: { hook: 5, body: 45, twist: 10 }
+
+  similarity:
+    motif_max: 0.7                     # 입력 모티프 대비 (FR-2.6)
+    recent_30d_max: 0.6                # 과거 30일 업로드 대비
+    cumulative_sample_max: 0.55        # 누적 샘플 100건 평균
+    embedding_model: jhgan/ko-sroberta-multitask
+
+  hook_patterns:                       # 후킹 다양성 (FR-2.7)
+    pool:
+      - question         # 질문형
+      - shock            # 놀람형
+      - number           # 숫자형
+      - dialogue         # 대화형
+      - confession       # 고백형
+      - twist_preview    # 반전 예고형
+      - timeline         # 시간순 도입
+      - second_person    # 너/당신 호명
+    no_repeat_window: 5                # 직전 5개 대본과 동일 패턴 금지
+
+  content_filter:                      # FR-2.5
+    block_keywords_path: prompts/block_keywords.txt
+
+# ---------- TTS (FR-3) ----------
+# 한국어 주력 엔진은 MeloTTS-Korean (MIT). Piper 한국어는 상업 사용 가능 모델 부재로 미사용.
+# Piper 바이너리는 future-proofing용으로 보관 (영어 voiceover 시 사용 가능).
+tts:
+  primary: melo
+  fallback_chain: [melo, edge]
+
+  melo:                                # MIT, MyShell.ai (사용자 선택)
+    language: KR
+    device: cpu
+    voices:                            # 단일 모델·단일 화자(KR)에 speed 변형으로 가상 다중 화자
+      - { id: kr_soft_default, speed: 0.95 }   # 부드러운 톤 기본
+      - { id: kr_soft_slow,    speed: 0.90 }
+      - { id: kr_soft_normal,  speed: 1.00 }
+      - { id: kr_soft_brisk,   speed: 1.05 }
+      - { id: kr_soft_calm,    speed: 0.92 }
+
+  piper:                               # 한국어 미지원 — 영어용으로만 사용 가능 (보관)
+    enabled: false
+    bin: models/piper/bin/piper.exe
+    voices: []                         # 한국어 voice가 추가될 때 등록
+
+  edge:                                # 비공식, 차단 리스크 (FR-3.7)
+    enabled: false
+    voices:
+      - ko-KR-SunHiNeural
+      - ko-KR-InJoonNeural
+      - ko-KR-BongJinNeural
+      - ko-KR-JiMinNeural
+      - ko-KR-GookMinNeural
+    consecutive_403_429_threshold: 5   # 누적 5회 시 24h 비활성화
+
+  audio:
+    sample_rate: 24000
+    channels: 1
+    format: mp3
+    target_lufs: -16                   # 음량 정규화 (FR-3.4)
+    target_duration_min: 50            # 50~58초 (FR-3.5)
+    target_duration_max: 58
+
+  speaker_rotation:
+    deterministic_by_content_hash: true
+    min_distinct_in_recent_n: 3        # 직전 3개와 다른 화자 강제 (FR-3.3)
+
+# ---------- 자막 (FR-4) ----------
+subtitle:
+  whisper:
+    model_size: small                  # CPU only: small 권장 (large-v3는 GPU 필요)
+    compute_type: int8                 # CPU 최적화
+    language: ko
+    vad_filter: true
+    beam_size: 5
+  format:
+    max_lines: 2
+    max_chars_per_line: 15
+    keyword_emphasis: true
+  output_dir: output/subtitle
+
+# ---------- 영상 합성 (FR-5) ----------
+renderer:
+  resolution: { width: 1080, height: 1920 }
+  fps: 30
+  video_codec: libx264
+  video_crf: 23
+  audio_codec: aac
+  audio_bitrate: 192k
+  max_duration_seconds: 58             # FR-5.2 (60초 안전 마진)
+
+  background:
+    pool_dir: assets/bg_video
+    min_pool_size: 100                 # FR-5.4
+    reuse_min_interval_days: 7
+    randomize:
+      crop: true
+      color_grade: true
+      speed_jitter: 0.05               # ±5%
+
+  bgm:
+    pool_dir: assets/bgm
+    min_pool_size: 30                  # FR-5.5
+    duck_db: -18                       # 사이드체인 더킹 (FR-5.3)
+    blacklist_path: data/bgm_blacklist.json
+    content_id_check_after_minutes: 10 # 업로드 후 검사 (A10)
+
+    # 풀 빌드 전략 (3-Tier Hybrid). 런타임 영상 합성은 풀에서만 선택한다.
+    # 풀 보강은 scripts/fetch_assets.py 로 별도 실행:
+    #   - tier1 (musicgen): python -m scripts.fetch_assets bgm-musicgen --per-mood 3
+    #   - tier2 (ia):       python -m scripts.fetch_assets bgm-ia --per-mood 5
+    #   - tier3 (yt):       YouTube 오디오 라이브러리 수동 다운로드 (SETUP.md §5.3)
+    pool_strategy:
+      tier1_musicgen:
+        enabled: true
+        model_id: facebook/musicgen-small
+        per_mood: 3                    # 무드당 클립 수
+        duration_sec: 30
+        license: "Apache 2.0 model; generated audio is free"
+      tier2_internet_archive:
+        enabled: true
+        per_mood: 5
+        license_filter: publicdomain   # 공식 PD 항목만
+      tier3_youtube_audio_library:
+        enabled: true
+        manual_only: true              # API 미제공 → 수동 다운로드만
+
+  subtitle_burn_in:
+    engine: libass                     # FR-5.7
+    font_path: assets/fonts/Pretendard-Bold.ttf
+    font_size: 56
+    primary_color: "&H00FFFFFF"        # 흰색
+    outline_color: "&H00000000"        # 검정 외곽선
+    outline_width: 4
+    keyword_color: "&H0000FFFF"        # 노란색 강조 (BGR)
+
+  validation:                          # FR-5.8
+    duration_tolerance_seconds: 2
+    expected_resolution: [1080, 1920]
+    audio_lufs_min: -16
+    audio_lufs_max: -14
+    rerender_on_fail: true
+    rerender_max: 1
+
+  output:
+    final_dir: output/final
+    retain_days: 7                     # 7일 후 자동 삭제
+
+# ---------- 업로드 (FR-6) ----------
+uploader:
+  api:
+    daily_quota_units: 10000           # FR-6.7
+    upload_cost_units: 1600            # 1건당
+    safety_margin_units: 1000
+
+  metadata:
+    title_suffix: " #Shorts"           # FR-6.3
+    description_template_path: prompts/upload_description.txt
+    category_id: 22                    # 22 = People & Blogs (FR-6.5)
+    made_for_kids: false               # FR-6.6
+    self_declared_made_for_kids: false
+    privacy_status: public             # public | unlisted | private
+
+  ai_disclosure:                       # FR-6.8
+    description_prefix: "본 영상은 AI 음성·각색을 사용했습니다."
+    required_hashtags: ["#AI", "#AIVoice"]
+    studio_ui_toggle: true             # Playwright 자동화로 altered/synthetic content 토글
+
+  oauth_clients:                       # FR-6.10 채널 분리 시 다중 등록
+    - name: default
+      client_secret_env: YOUTUBE_CLIENT_SECRET_PATH
+      token_env: YOUTUBE_TOKEN_PATH
+
+# ---------- 로깅·모니터링 (FR-8) ----------
+observability:
+  log_dir: logs
+  log_format: jsonl                    # FR-8.1
+  rotation: daily                      # YYYY-MM-DD.log
+  errors_dir: logs/errors
+  daily_report: true                   # FR-8.3
+  pii_mask_patterns:                   # A5
+    - refresh_token
+    - access_token
+    - Authorization
+    - email
+
+  notify:
+    discord_enabled: true
+    telegram_enabled: false
+    on_levels: [ERROR, CRITICAL]
+
+# ---------- Kill-Switch (§12) ----------
+killswitch:
+  ctr_7d_threshold: 0.01               # 7일 평균 CTR < 1%
+  retention_7d_threshold: 0.30         # 시청 지속률 < 30%
+  policy_warning_immediate: true       # 정책 경고 1건 = 즉시 중단
+  upload_failure_rate_2d: 0.50         # 2일 연속 50% 초과 실패
+  cumulative_similarity_threshold: 0.6
+  bgm_match_rate_monthly: 0.10         # > 10% 시 BGM 풀 재검증
+
+# ---------- 컴플라이언스 (§3.5) ----------
+compliance:
+  daily_check_enabled: true
+  same_speaker_consecutive_max: 3
+  bg_video_reuse_min_days: 7
+  recent_30d_avg_similarity_max: 0.6
+
+# ---------- 데이터베이스 ----------
+database:
+  path: data/shorts.db
+  wal_mode: true                       # A2
+  wal_autocheckpoint: 1000
+  backup:
+    enabled: true
+    interval_hours: 24                 # 일간 .backup 명령 (A12)
+    retain_days: 7
+    output_dir: data/backups

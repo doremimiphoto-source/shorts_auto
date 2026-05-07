@@ -1,0 +1,93 @@
+# ==================== 비밀 정보 ====================
+.env
+.env.local
+.env.*.local
+credentials/
+!credentials/.gitkeep
+*.pem
+*.key
+token.json
+client_secret*.json
+
+# ==================== Python ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 가상환경
+.venv/
+venv/
+ENV/
+env/
+
+# pytest, mypy
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ==================== 데이터·산출물 ====================
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/backups/
+data/killswitch.flag
+output/
+!output/.gitkeep
+logs/
+!logs/.gitkeep
+models/
+
+# ==================== 에셋 (대용량) ====================
+assets/bg_video/*
+!assets/bg_video/.gitkeep
+!assets/bg_video/_metadata.json
+assets/bgm/*
+!assets/bgm/.gitkeep
+!assets/bgm/_metadata.json
+# 폰트는 추적함 (소수, 라이센스 명시 필요)
+
+# ==================== Lock/임시 ====================
+*.lock
+*.tmp
+*.bak
+*.swp
+*-install.log
+*-smoke.log
+.DS_Store
+Thumbs.db
+
+# ==================== IDE ====================
+.vscode/
+.idea/
+*.iml
+*.code-workspace
+
+# ==================== Playwright ====================
+playwright-report/
+test-results/
+.playwright/
+
+# ==================== OS ====================
+desktop.ini
+$RECYCLE.BIN/

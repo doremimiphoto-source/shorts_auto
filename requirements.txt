@@ -1,0 +1,67 @@
+# ==================== Shorts Auto Pipeline 의존성 ====================
+# Python 3.11+ 필수. 가상환경 활성화 후 `pip install -r requirements.txt` 실행.
+# ====================================================================
+
+# ---------- LLM (FR-2) ----------
+google-genai>=1.0.0              # Gemini API (신 SDK)
+groq>=0.11.0                     # Groq API
+ollama>=0.4.0                    # Ollama 로컬 클라이언트 (CPU 폴백)
+
+# ---------- TTS (FR-3) — MeloTTS-Korean (주력) ----------
+# 설치: git clone https://github.com/myshell-ai/MeloTTS /tmp/MeloTTS
+#        cd /tmp/MeloTTS && pip install -e . (fugashi>=1.3.0 으로 완화 후)
+#        python -m unidic download (~526MB)
+# 아래는 MeloTTS editable install 시 자동 설치되는 핵심 의존성 (참고용)
+torch>=2.11.0                    # MeloTTS 추론 엔진
+torchaudio>=2.11.0               # 오디오 I/O
+mecab-python3==1.0.9             # 일본어 형태소 (MeloTTS 내부 의존)
+fugashi>=1.3.0                   # MeCab 바인딩 (1.3.0 메타데이터 불일치로 >=)
+unidic-lite==1.0.8               # 경량 유니딕 사전
+soxr>=1.0.0                      # transformers 5.x 오디오 리샘플링
+# g2pkk>=0.1.1 — MeloTTS 의존성으로 자동 설치
+# Piper는 영어 voiceover용 보관. 한국어는 MeloTTS 전담.
+# piper-tts>=1.2.0               # 필요 시 활성화 (Python 래퍼)
+
+# ---------- STT / 자막 (FR-4) ----------
+faster-whisper>=1.0.3            # CPU int8 모드 사용
+
+# ---------- 임베딩 / 유사도 (FR-1.5, FR-2.6) ----------
+sentence-transformers>=3.2.0     # ko-sroberta
+numpy>=1.26.0
+scipy>=1.13.0
+
+# ---------- 크롤링 (FR-1) ----------
+httpx[http2]>=0.27.0             # 정적 페이지
+selectolax>=0.3.21               # 빠른 HTML 파서
+playwright>=1.48.0               # 동적 페이지 + Studio UI 자동화 (FR-6.8)
+
+# ---------- 영상 합성 (FR-5) ----------
+ffmpeg-python>=0.2.0             # FFmpeg 래퍼 (필터 그래프 보조)
+Pillow>=10.4.0                   # 이미지 처리
+
+# ---------- 업로드 (FR-6) ----------
+google-api-python-client>=2.149.0
+google-auth-oauthlib>=1.2.1
+google-auth-httplib2>=0.2.0
+
+# ---------- 알림 (FR-8.4) ----------
+# Discord Webhook은 httpx로 직접 POST (별도 SDK 불필요)
+
+# ---------- 설정·로깅·유틸 ----------
+python-dotenv>=1.0.1
+PyYAML>=6.0.2
+structlog>=24.4.0                # JSON Lines 로그 + PII 마스킹
+pydantic>=2.9.0                  # 설정 검증
+pydantic-settings>=2.6.0
+tenacity>=9.0.0                  # 재시도 (지수 백오프)
+
+# ---------- 보안 (FR-3.3, A1) ----------
+# Windows DPAPI는 표준 라이브러리 ctypes로 호출 가능. 별도 패키지 불필요.
+# age 또는 GPG는 외부 바이너리로 호출 (선택)
+cryptography>=43.0.0             # 토큰 암호화
+
+# ---------- 테스트 ----------
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+pytest-mock>=3.14.0
+freezegun>=1.5.0                 # 시간 의존 테스트
