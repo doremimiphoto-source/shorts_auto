@@ -12,27 +12,30 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import time
 from pathlib import Path
 
 from .base import SynthResult, TTSEngine
 
 # 실제 제공 한국어 음성: SunHiNeural(여), InJoonNeural(남), HyunsuMultilingualNeural(남)
-# 공부 팁 채널: 명확하고 자연스러운 톤 / 적당한 속도 (너무 느리면 지루함)
+# 공부 팁 채널: 여자 중학생 수준의 밝고 자연스러운 톤 — SunHiNeural 단독 사용
 _VOICE_RATE: dict[str, str] = {
-    "ko-KR-SunHiNeural":               "-10%",   # 따뜻한 여성 (주력, 가장 자연스러움)
-    "ko-KR-InJoonNeural":              "-8%",    # 자연스러운 남성
-    "ko-KR-HyunsuMultilingualNeural":  "-5%",    # 다국어 남성
+    "ko-KR-SunHiNeural":               "+8%",    # 활기차고 빠른 10대 중학생 발화 속도
+    "ko-KR-InJoonNeural":              "-8%",    # 자연스러운 남성 (폴백용)
+    "ko-KR-HyunsuMultilingualNeural":  "-5%",    # 다국어 남성 (폴백용)
 }
 
-# 피치 조정 — 낮을수록 부드럽고 덜 AI스럽게
+# 피치 조정 — +18Hz: 중학생 여성의 맑고 높은 음역대 연출
 _VOICE_PITCH: dict[str, str] = {
-    "ko-KR-SunHiNeural":               "-5Hz",   # 더 따뜻하고 자연스럽게
+    "ko-KR-SunHiNeural":               "+18Hz",  # 중학생 여성 특유의 높고 또렷한 피치
     "ko-KR-InJoonNeural":              "-2Hz",
     "ko-KR-HyunsuMultilingualNeural":  "+0Hz",
 }
 
 _DEFAULT_VOICES = list(_VOICE_RATE.keys())
 _FAIL_THRESHOLD = 5
+_MAX_RETRIES = 3
+_RETRY_BASE_WAIT = 2  # 초, 지수 백오프: 2s, 4s
 
 
 class EdgeEngine(TTSEngine):
@@ -85,11 +88,21 @@ class EdgeEngine(TTSEngine):
             communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
             await communicate.save(str(mp3_path))
 
-        try:
-            asyncio.run(_do())
-        except Exception as exc:
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                asyncio.run(_do())
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES - 1:
+                    time.sleep(_RETRY_BASE_WAIT * (attempt + 1))
+        if last_exc is not None:
             self._fail_count += 1
-            raise RuntimeError(f"Edge TTS 합성 실패 ({voice}): {exc}") from exc
+            raise RuntimeError(
+                f"Edge TTS 합성 실패 ({voice}, {_MAX_RETRIES}회 시도): {last_exc}"
+            ) from last_exc
 
         if not mp3_path.exists() or mp3_path.stat().st_size == 0:
             self._fail_count += 1

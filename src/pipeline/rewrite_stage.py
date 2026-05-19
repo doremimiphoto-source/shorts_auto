@@ -8,9 +8,12 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from ..utils.content_filter import ContentFilter
 from ..utils.hook_pattern import select_hook_pattern
-from ..utils.similarity import cosine_max, cosine_mean, encode, serialize, text_sha256
+from ..utils.korean import strip_cjk
+from ..utils.similarity import cosine_max, cosine_mean, deserialize, encode, serialize, text_sha256
 from .context import PipelineContext, StageError, StageSkipped, stage_timer
 from .crawl_stage import _build_rewriter_chain
 
@@ -68,6 +71,13 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
             ctx.log.warning("rewrite_too_short", attempt=attempt + 1, chars=char_len, min=min_chars)
         assert result is not None
 
+        # 3b. 한자·일본어 제거 (LLM이 규칙을 어기고 CJK를 섞는 경우 대비)
+        result.hook  = strip_cjk(result.hook)
+        result.body  = strip_cjk(result.body)
+        result.twist = strip_cjk(result.twist)
+        result.title = strip_cjk(result.title)
+        result.full_text = " ".join(s for s in (result.hook, result.body, result.twist) if s).strip()
+
         # 4. 콘텐츠 필터 (FR-2.5)
         filter_cfg = rewriter_cfg.get("content_filter", {})
         block_path = filter_cfg.get("block_keywords_path", "prompts/block_keywords.txt")
@@ -85,12 +95,14 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         # ① motif 대비
         motif_vec = encode(row["motif"], model_name=embedding_model)
         sim_motif = float(cosine_max(cand_vec, motif_vec.reshape(1, -1)))
-        # ② 30일 대비
+        # ② 30일 대비 — DB 저장 embedding BLOB 재사용으로 재인코딩 생략
         recent_30d = ctx.repos.scripts.list_recent(days=30, limit=200)
-        sim_30d = _max_similarity(cand_vec, [s["full_text"] for s in recent_30d if s.get("full_text")], embedding_model) if recent_30d else 0.0
-        # ③ 누적 평균
+        corpus_30d = _corpus_from_rows(recent_30d, embedding_model)
+        sim_30d = float(cosine_max(cand_vec, corpus_30d)) if corpus_30d is not None else 0.0
+        # ③ 누적 평균 — 동일하게 캐시 활용
         cum_sample = ctx.repos.scripts.sample_cumulative(limit=100)
-        sim_cum = _mean_similarity(cand_vec, [s["full_text"] for s in cum_sample if s.get("full_text")], embedding_model) if cum_sample else 0.0
+        corpus_cum = _corpus_from_rows(cum_sample, embedding_model)
+        sim_cum = float(cosine_mean(cand_vec, corpus_cum)) if corpus_cum is not None else 0.0
 
         ctx.log.info("similarity_checks",
                      sim_motif=round(sim_motif, 4),
@@ -140,15 +152,26 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         return script_id
 
 
-def _max_similarity(query_vec, texts: list[str], model_name: str) -> float:
-    if not texts:
-        return 0.0
-    corpus = encode(texts, model_name=model_name)
-    return float(cosine_max(query_vec, corpus))
+def _corpus_from_rows(rows: list[dict], model_name: str) -> "np.ndarray | None":
+    """DB rows의 embedding BLOB을 우선 사용, 없으면 full_text를 새로 인코딩.
 
+    저장된 임베딩을 재사용하므로 200개 스크립트도 수초 내 처리 가능.
+    """
+    cached: list[np.ndarray] = []
+    texts_to_encode: list[str] = []
+    for row in rows:
+        raw = row.get("embedding")
+        if raw:
+            v = deserialize(raw)
+            cached.append(v.reshape(1, -1) if v.ndim == 1 else v)
+        elif row.get("full_text"):
+            texts_to_encode.append(row["full_text"])
 
-def _mean_similarity(query_vec, texts: list[str], model_name: str) -> float:
-    if not texts:
-        return 0.0
-    corpus = encode(texts, model_name=model_name)
-    return float(cosine_mean(query_vec, corpus))
+    parts: list[np.ndarray] = list(cached)
+    if texts_to_encode:
+        enc = encode(texts_to_encode, model_name=model_name)
+        parts.append(enc.reshape(1, -1) if enc.ndim == 1 else enc)
+
+    if not parts:
+        return None
+    return np.vstack(parts)

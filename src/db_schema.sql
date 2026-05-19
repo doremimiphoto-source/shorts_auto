@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS videos (
     duration_sec    REAL,
     width           INTEGER,
     height          INTEGER,
+    thumbnail_path  TEXT,                                  -- 생성된 썸네일 JPEG 경로
     rendered_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     valid           INTEGER DEFAULT 0                      -- 1 = validation 통과
 );

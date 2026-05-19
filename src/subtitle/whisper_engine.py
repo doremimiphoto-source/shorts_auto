@@ -39,7 +39,7 @@ _ASS_HEADER = """\
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
-WrapStyle: 2
+WrapStyle: 1
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
@@ -47,36 +47,53 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,Pretendard,76,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,3,8,80,80,120,1
 Style: Title,Pretendard,80,&H00FFFFFF,&H000000FF,&H001E78FF,&H00000000,-1,0,0,0,100,100,2,0,1,18,0,8,80,80,300,1
 
+
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-# ─── 타이틀 (상단 파스텔 바, \an2 바닥 기준 Y=460) ───
-# Gowun Dodum 72px | 흰 글자 + 블랙 아웃라인 3px | 페이드 인/아웃
+# ─── 타이틀 (상단 파스텔 바, \an2 Y=450 기준) ───
+# 96px 웜 골드 | 위→아래 12px 플로트인 + 페이드 | 아웃라인 5px
 _TITLE_ANIM = (
-    r"{\an2\pos(540,460)"
-    r"\fad(200,200)"
-    r"\fnGowun Dodum\fs72\fsp0"
-    r"\c&H00FFFFFF&\3c&H00000000&\bord3\shad3\blur0}"
+    r"{\an2\move(540,438,540,450,0,450)"
+    r"\fad(300,200)"
+    r"\fnGowun Dodum\fs96\fsp1"
+    r"\c&H0066E0FF&\3c&H00000000&\bord5\shad4\blur0}"
 )
 
 # ─── 영상 윈도우 자막 (480px~1640px, 중앙 Y=1060) ─ Gowun Dodum ───
-# hook : 중앙 페이드인 / 92px 흰 글자 + 블랙 아웃라인
-# body : 슬라이드업 1110→1060 / 70px 흰 글자 + 블랙 아웃라인
-# twist: 경량 팝인 / 88px 웜 골드 + 블랙 아웃라인
-_TAG_HOOK  = r"{\an5\pos(540,1060)\fnGowun Dodum\fs92\c&H00FFFFFF&\3c&H00000000&\bord5\shad2\fad(200,200)}"
-_TAG_BODY  = r"{\an5\move(540,1110,540,1060,0,280)\fnGowun Dodum\fs70\c&H00FFFFFF&\3c&H00000000&\bord4\shad2\fad(200,200)}"
-_TAG_TWIST = r"{\an5\pos(540,1060)\fnGowun Dodum\fs88\c&H0066E0FF&\3c&H00000000&\bord5\shad2\fscx0\fscy0\t(0,200,\fscx104\fscy104)\t(200,280,\fscx100\fscy100)\fad(0,250)}"
+# hook : 슬라이드업 20px (1080→1060) + 페이드인 / 92px 흰 글자
+# body : 슬라이드업 55px (1115→1060) + 페이드인 / 70px 흰 글자
+# twist: 바운스 탄성 팝인 (0→108→97→101→100%) / 88px 웜 골드
+_TAG_HOOK  = r"{\an5\move(540,1080,540,1060,0,350)\fnGowun Dodum\fs92\c&H00FFFFFF&\3c&H00000000&\bord5\shad2\fad(300,200)}"
+_TAG_BODY  = r"{\an5\move(540,1115,540,1060,0,320)\fnGowun Dodum\fs70\c&H00FFFFFF&\3c&H00000000&\bord4\shad2\fad(220,200)}"
+_TAG_TWIST = r"{\an5\pos(540,1060)\fnGowun Dodum\fs88\c&H0066E0FF&\3c&H00000000&\bord5\shad2\fscx0\fscy0\t(0,180,\fscx108\fscy108)\t(180,290,\fscx97\fscy97)\t(290,390,\fscx101\fscy101)\t(390,430,\fscx100\fscy100)\fad(0,300)}"
 
 # 강조 태그 (웜 골드 &H0066E0FF& = RGB 255·224·102, video_15 스타일)
 _EMPH_HOOK  = (r"{\c&H0066E0FF&\fs102\blur0}", r"{\c&H00FFFFFF&\fs92\blur0}")
 _EMPH_BODY  = (r"{\c&H0066E0FF&\fs80\blur0}",  r"{\c&H00FFFFFF&\fs70\blur0}")
 _EMPH_TWIST = (r"{\c&H00FFFFFF&\fs98\blur0}",  r"{\c&H0066E0FF&\fs88\blur0}")
 
-# Gowun Dodum 960px 안전폭 기준 최대 한글 수/줄 (fontSize × 0.78 ≈ charWidth)
-_MAX_KO_HOOK  = 12   # 92px → 960/(92×0.78) ≈ 13.4
-_MAX_KO_BODY  = 15   # 70px → 960/(70×0.78) ≈ 17.6
-_MAX_KO_TWIST = 12   # 88px → 960/(88×0.78) ≈ 14.0
+# Gowun Dodum 880px 실질 안전폭 기준 최대 한글 수/줄 (fontSize × 0.85 ≈ charWidth, 이모지 포함 여유)
+_MAX_KO_HOOK  = 10   # 92px → 880/(92×0.85) ≈ 11.2
+_MAX_KO_BODY  = 12   # 70px → 880/(70×0.85) ≈ 14.8
+_MAX_KO_TWIST = 10   # 88px → 880/(88×0.85) ≈ 11.8
+
+
+import re as _re
+
+_CJK_STRIP = _re.compile(
+    r"[぀-ゟ"   # 히라가나
+    r"゠-ヿ"    # 카타카나
+    r"一-鿿"    # CJK 통합 한자
+    r"㐀-䶿"    # CJK 확장 A
+    r"豈-﫿]"   # CJK 호환 한자
+)
+
+
+def _strip_cjk(text: str) -> str:
+    """한자·히라가나·카타카나 제거 — 한글·영어·이모지·숫자·구두점 보존."""
+    return _CJK_STRIP.sub("", text).strip()
 
 
 def _ko_len(text: str) -> int:
@@ -84,45 +101,29 @@ def _ko_len(text: str) -> int:
     return sum(1 for c in text if "가" <= c <= "힣")
 
 
-# 한글 조사/어미 단일 음절 — 공백 직전 이 문자면 자연 분리 지점
-_KO_PARTICLES = frozenset("에서로을를은는이가와과도만의등")
+# 한글 조사 음절 — 단어 끝에 오면 자연스러운 분리 우선 지점
+# '서'(에서), '로'(으로), '을/를', '은/는', '이/가', '와/과', '도', '의', '등', '만'
+_KO_PARTICLES = frozenset("로을를은는가와과도의등")  # 이/서는 어간에도 흔해 제외
 
 
-def _analyze_spaces(text: str) -> list[tuple[int, int, bool]]:
-    """공백 위치 분석: (공백_인덱스, 직전_한글수, 조사_여부) 리스트."""
-    result: list[tuple[int, int, bool]] = []
-    ko_count = 0
-    for i, ch in enumerate(text):
-        if "가" <= ch <= "힣":
-            ko_count += 1
-        elif ch == " " and ko_count > 0:
-            prev_ko = ""
-            for j in range(i - 1, -1, -1):
-                if "가" <= text[j] <= "힣":
-                    prev_ko = text[j]
-                    break
-            result.append((i, ko_count, prev_ko in _KO_PARTICLES))
-    return result
+def _word_ko_len(word: str) -> int:
+    """단어 내 한글 음절 수."""
+    return sum(1 for c in word if "가" <= c <= "힣")
 
 
 def _wrap_text_lines(text: str, max_ko_per_line: int, max_lines: int = 3) -> str:
-    r"""한글 조사 기반 자연스러운 다중 줄바꿈 (최대 max_lines줄, 기본 3줄).
+    r"""한국어 단어 단위 자연스러운 줄바꿈 (최대 max_lines줄).
 
-    분리 우선순위 (재귀 적용):
+    분리 우선순위:
     1. 문장 부호(다/요/!?.) 뒤 → 자연 문장 분리
-    2. 조사(에/로/을/는 등) 뒤 공백 → 균등 분배 기준
-    3. 공백 균형 분할
-    2줄이 길면 3줄 이상 표현 가능.
+    2. 단어 그리디 묶기: max_ko_per_line 이내 최대한 채우되
+       현재 줄의 마지막 단어가 조사 끝이면 거기서 분리 우선
+    3. 공백 없으면 강제 mid 분할
     """
     import re
     text = text.strip()
     if not text or _ko_len(text) <= max_ko_per_line or max_lines <= 1:
         return text
-
-    total_ko = _ko_len(text)
-    # 실제 필요 줄 수만큼만 사용 (17자·max12 → 2줄, 40자·max15 → 3줄)
-    needed = min(max_lines, (total_ko + max_ko_per_line - 1) // max_ko_per_line)
-    target = total_ko // needed  # 줄당 균등 기준
 
     # 1순위: 문장 부호 뒤 자연 분리
     for m in re.finditer(r"(?<=[다요!?.])\s+", text):
@@ -131,29 +132,37 @@ def _wrap_text_lines(text: str, max_ko_per_line: int, max_lines: int = 3) -> str
         if line1 and rest and _ko_len(line1) <= max_ko_per_line:
             return line1 + r"\N" + _wrap_text_lines(rest, max_ko_per_line, max_lines - 1)
 
-    spaces = _analyze_spaces(text)
+    # 2순위: 단어 그리디 묶기
+    words = text.split()
+    if len(words) <= 1:
+        mid = len(text) // 2
+        return text[:mid] + r"\N" + text[mid:]
 
-    # 2순위: 조사 뒤 공백 → 균등 기준에 가장 가까운 위치
-    particle_spaces = [(p, k) for p, k, is_p in spaces if is_p and 0 < k <= max_ko_per_line]
-    if particle_spaces:
-        best_p, _ = min(particle_spaces, key=lambda x: abs(x[1] - target))
-        line1 = text[:best_p].strip()
-        rest  = text[best_p + 1:].strip()
-        if line1 and rest:
-            return line1 + r"\N" + _wrap_text_lines(rest, max_ko_per_line, max_lines - 1)
+    lines: list[str] = []
+    current: list[str] = []
+    current_ko = 0
 
-    # 3순위: 균형 공백 분할
-    valid = [(p, k) for p, k, _ in spaces if 0 < k <= max_ko_per_line]
-    if valid:
-        best_p, _ = min(valid, key=lambda x: abs(x[1] - target))
-        line1 = text[:best_p].strip()
-        rest  = text[best_p + 1:].strip()
-        if line1 and rest:
-            return line1 + r"\N" + _wrap_text_lines(rest, max_ko_per_line, max_lines - 1)
+    for idx, word in enumerate(words):
+        wko = _word_ko_len(word)
 
-    # 4순위: 공백 없음 — 강제 mid 분할
-    mid = len(text) // 2
-    return text[:mid] + r"\N" + text[mid:]
+        if current and current_ko + wko > max_ko_per_line:
+            lines.append(" ".join(current))
+            current = [word]
+            current_ko = wko
+
+            if len(lines) >= max_lines - 1:
+                remaining = " ".join(words[idx + 1:])
+                if remaining:
+                    current.append(remaining)
+                break
+        else:
+            current.append(word)
+            current_ko += wko
+
+    if current:
+        lines.append(" ".join(current))
+
+    return r"\N".join(lines) if lines else text
 
 
 def _apply_word_emphasis(text: str, words: list[str], emph_open: str, emph_close: str) -> str:
@@ -192,9 +201,9 @@ def make_styled_subtitles(
     style_overrides 키: title_anim / tag_hook / tag_body / tag_twist /
                         emph_hook / emph_body / emph_twist (각각 (open, close) 튜플)
     """
-    hook  = (script.get("hook")  or "").strip()
-    body  = (script.get("body")  or "").strip()
-    twist = (script.get("twist") or "").strip()
+    hook  = _strip_cjk((script.get("hook")  or "").strip())
+    body  = _strip_cjk((script.get("body")  or "").strip())
+    twist = _strip_cjk((script.get("twist") or "").strip())
     emph_words = [w.strip() for w in (script.get("emphasis_words") or []) if w.strip()]
 
     _so = style_overrides or {}
@@ -250,9 +259,9 @@ def make_styled_subtitles(
 
     extra: list[str] = []
     full_end = _ass_time(audio_duration)
-    title_text = (script.get("title") or "").strip()
+    title_text = _strip_cjk((script.get("title") or "").strip())
     if title_text:
-        wrapped_title = _wrap_text_lines(title_text, max_ko_per_line=16)
+        wrapped_title = _wrap_text_lines(title_text, max_ko_per_line=9)
         extra.append(f"Dialogue: 1,0:00:00.00,{full_end},Title,,0,0,0,,{ta}{wrapped_title}\n")
 
     _write_ass(out_ass, segments, extra_lines=extra)

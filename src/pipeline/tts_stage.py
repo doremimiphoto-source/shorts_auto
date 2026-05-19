@@ -184,12 +184,45 @@ def _build_piper_engine(ctx: PipelineContext, piper_cfg: dict) -> PiperEngine:
 _NATIVE_ONES = ["", "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉"]
 _NATIVE_TENS = ["", "열", "스물", "서른", "마흔", "쉰", "예순", "일흔", "여든", "아흔"]
 
-# 순우리말 수를 쓰는 단위 (인원·사물·나이 등)
+# 순우리말 수를 쓰는 단위 (인원·사물·나이·종류·배수 등)
+# 주의: 긴 단위어를 먼저 매칭하도록 정렬하므로 tuple 순서는 무관 (sorted 처리됨)
 _KO_COUNTERS = (
+    # 기존 단위어
     "명", "개", "권", "장", "마리", "살", "번", "대", "잔", "병",
     "켤레", "벌", "채", "칸", "층", "줄", "그루", "포기", "송이",
     "다발", "마디", "알", "방울", "조각", "통", "봉지", "봉", "쌍", "짝",
+    # 추가: 종류·배수·가닥 계열 (순우리말 수 필요)
+    "가지",   # 세 가지, 다섯 가지 방법
+    "배",     # 두 배, 세 배 (배수)
+    "차례",   # 세 차례 (횟수·회수)
+    "가닥",   # 두 가닥
+    "갈래",   # 두 갈래
+    "사람",   # 두 사람 (명의 비격식 대안)
+    "군데",   # 세 군데 (장소 수)
 )
+
+# ── 한자어 수 (시간·점수·횟수 등 Sino-Korean 수사) ──────────────────────
+_SINO_DIGIT = ["영", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"]
+
+
+def _to_sino_korean(n: int) -> str:
+    """정수를 한자어 수사로 변환 (0~99999).
+
+    10→십, 20→이십, 80→팔십, 100→백, 1000→천 (선행 '일' 생략 규칙 적용).
+    """
+    if n == 0:
+        return "영"
+    if n < 0 or n >= 100000:
+        return str(n)
+    parts: list[str] = []
+    for unit, label in ((10000, "만"), (1000, "천"), (100, "백"), (10, "십")):
+        k = n // unit
+        if k:
+            parts.append(("" if k == 1 else _SINO_DIGIT[k]) + label)
+            n %= unit
+    if n:
+        parts.append(_SINO_DIGIT[n])
+    return "".join(parts)
 
 
 def _to_native(n: int) -> str:
@@ -203,10 +236,9 @@ def _to_native(n: int) -> str:
 
 
 def _normalize_ko_numbers(text: str) -> str:
-    """숫자+단위어 → 순우리말 수 변환.
+    """숫자+순우리말단위 → 순우리말 수 변환.
 
     10명 → 열 명 / 20명 → 스무 명 / 21명 → 스물한 명
-    20은 단독으로 명사 앞에 오면 '스무'로 변환 (스물 + 명사 → 스무 명사).
     """
     import re
     counter_pat = "|".join(sorted(_KO_COUNTERS, key=len, reverse=True))
@@ -215,11 +247,12 @@ def _normalize_ko_numbers(text: str) -> str:
     def _replace(m: re.Match) -> str:
         n = int(m.group(1))
         unit = m.group(2)
-        if not (1 <= n <= 99):
+        if n < 1:
             return m.group(0)
+        if n > 99:
+            # 100 이상은 한자어 수 + 단위 (백 개, 백 명 등)
+            return _to_sino_korean(n) + " " + unit
         native = _to_native(n)
-        # 20, 30, ... 처럼 십단위로 끝날 때 + 바로 명사 → 스물→스무 등
-        # 실제로 스물만 해당 (다른 십단위는 변형 없음)
         if n == 20:
             native = "스무"
         return native + " " + unit
@@ -227,13 +260,84 @@ def _normalize_ko_numbers(text: str) -> str:
     return pattern.sub(_replace, text)
 
 
+def _normalize_sino_numbers(text: str) -> str:
+    """남은 아라비아 숫자를 모두 한자어 수사로 변환.
+
+    25분→이십오 분, 80→팔십, 3회→삼 회, 3단계→삼 단계, 20%→이십 퍼센트 등.
+    순우리말 단위어와 결합된 숫자는 _normalize_ko_numbers에서 이미 처리됨.
+    """
+    import re
+    # % 기호는 퍼센트로 치환
+    text = text.replace("%", " 퍼센트")
+
+    _src = text  # 원본 보존 (위치 참조용)
+
+    def _replace(m: re.Match) -> str:
+        try:
+            converted = _to_sino_korean(int(m.group(0)))
+        except ValueError:
+            return m.group(0)
+        # 바로 다음 문자가 한글이면 공백 삽입 (삼회→삼 회, 삼단계→삼 단계)
+        end = m.end()
+        if end < len(_src) and ("가" <= _src[end] <= "힣" or "ᄀ" <= _src[end] <= "ᇿ"):
+            return converted + " "
+        return converted
+
+    return re.sub(r"\d+", _replace, text)
+
+
+def _add_sentence_breaks(text: str) -> str:
+    """문장 끝에 마침표를 보완하고 TTS 포즈 경계를 삽입한다.
+
+    Edge TTS는 마침표(.)에서 자연스럽게 쉬므로, 마침표 누락 시 문장이 이어진다.
+    1단계: 마침표 없이 이어지는 문장 경계에 마침표 삽입
+    2단계: 구두점 뒤 공백 → 줄바꿈 (MeloTTS 포즈 마커 역할)
+    """
+    import re
+    # ① 구두점 없는 문장 경계에 마침표 삽입: "읽는다 둘째" → "읽는다. 둘째"
+    #   - 다/요 바로 뒤에 공백이 오고, 다음이 한글·숫자 (이미 .,!? 가 붙어있으면 스킵)
+    text = re.sub(r"([다요])(?=[.,!?])", r"\1", text)   # 이미 구두점 있는 건 스킵 (no-op)
+    text = re.sub(r"([다요])( +)(?=[가-힣0-9])", r"\1.\2", text)
+    # ② 텍스트 끝이 다/요로 끝나면 마침표 추가
+    text = re.sub(r"([다요])$", r"\1.", text)
+    # ③ 구두점 뒤 공백 → 줄바꿈 (TTS 포즈 마커)
+    text = re.sub(r"([다요]\.) +", r"\1\n", text)
+    text = re.sub(r"([!?]) +", r"\1\n", text)
+    # ④ 연속 줄바꿈 정리
+    text = re.sub(r"\n{2,}", "\n", text)
+    return text.strip()
+
+
+def _fix_ko_spacing(text: str) -> str:
+    """기본 띄어쓰기 교정 — TTS 발음에 영향을 주는 공백 오류만 처리."""
+    import re
+    # 쉼표·마침표 뒤 공백 없는 경우 삽입 (소수점 숫자 제외)
+    text = re.sub(r",([가-힣a-zA-Z0-9])", r", \1", text)
+    text = re.sub(r"\.([가-힣a-zA-Z])", r". \1", text)
+    # 구두점 앞 불필요한 공백 제거
+    text = re.sub(r"\s+([.,!?])", r"\1", text)
+    # 중복 공백 → 단일 공백
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
 def _sanitize_for_ko_tts(text: str) -> str:
     """한국어 TTS 입력 정제.
 
-    1) 숫자+단위어를 순우리말 수로 변환 (10명→열 명, 20명→스무 명 등)
-    2) 비한국어 문자(중국어·일본어 등) 제거
+    0) 한자·히라가나·카타카나 선제 제거 (rewrite 단계 누락분 안전망)
+    1) 순우리말 단위 수 변환 (10명→열 명)
+    2) 나머지 숫자 한자어 변환 (80→팔십, 25분→이십오 분)
+    3) 기본 띄어쓰기 교정
+    4) 문장 경계 줄바꿈 삽입으로 자연 쉬어가기 유도
+    5) 비한국어 문자 제거
     """
+    from ..utils.korean import strip_cjk
+    text = strip_cjk(text)
     text = _normalize_ko_numbers(text)
+    text = _normalize_sino_numbers(text)
+    text = _fix_ko_spacing(text)
+    text = _add_sentence_breaks(text)
+
     _ALLOWED = frozenset(range(0x0020, 0x007F))  # basic ASCII printable
     result = []
     for ch in text:

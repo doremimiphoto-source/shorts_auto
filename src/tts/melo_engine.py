@@ -20,13 +20,13 @@ from pathlib import Path
 from .base import SynthResult, TTSEngine
 
 
-# 사용자 요청: 여성·부드러운 한국어 — speed 0.95(가벼운 슬로우) 기본, ±0.05 다변화
+# 자연스러운 한국어 TTS 속도 — 0.93~1.03 범위 (너무 느리면 로봇 느낌)
 _SPEED_PROFILES: dict[str, float] = {
-    "kr_soft_default": 0.95,
-    "kr_soft_slow": 0.90,
-    "kr_soft_normal": 1.00,
-    "kr_soft_brisk": 1.05,
-    "kr_soft_calm": 0.92,
+    "kr_soft_default": 0.97,
+    "kr_soft_slow":    0.94,
+    "kr_soft_normal":  1.00,
+    "kr_soft_brisk":   1.03,
+    "kr_soft_calm":    0.96,
 }
 
 

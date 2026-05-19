@@ -72,6 +72,22 @@ class SourceRepository:
         row = self.db.fetchone("SELECT COUNT(*) AS c FROM sources WHERE status = 'new'")
         return int(row["c"]) if row else 0
 
+    def list_recent_motifs(self, limit: int = 100) -> list[str]:
+        """최근 사용·차단된 소재의 motif 목록 (신규 소재 중복 검사용)."""
+        rows = self.db.fetchall(
+            "SELECT motif FROM sources WHERE status != 'new' ORDER BY crawled_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [r["motif"] for r in rows if r.get("motif")]
+
+    def list_recent_themes(self, limit: int = 30) -> list[str]:
+        """최근 사용·차단된 소재의 테마(title) 목록 (테마 다양성 확보용)."""
+        rows = self.db.fetchall(
+            "SELECT title FROM sources ORDER BY crawled_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [r["title"] for r in rows if r.get("title")]
+
 
 # =============================================================================
 # Scripts (FR-2)

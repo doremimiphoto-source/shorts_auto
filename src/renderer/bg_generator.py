@@ -19,118 +19,142 @@ _PROMPT_MAP: list[tuple[list[str], str]] = [
     # ─ 시험 행운 부적
     (
         ["부적", "lucky_charm", "행운", "만점 전설", "10명에게 공유"],
-        "cute kawaii anime girl holding glowing Korean exam luck charm talisman amulet, "
-        "golden sparkles and stars swirling around her, cheerful expression cheering fighting, "
-        "red and gold magical glowing effects, soft dreamy dark bokeh background, "
-        "adorable chibi art style, highly detailed, no text no watermark, vertical portrait 9:16",
+        "breathtaking anime girl holding radiant golden exam luck talisman, "
+        "swirling magical stardust and sparkling aurora particles around her, "
+        "cinematic volumetric light shafts, rich crimson and gold mystical glow, "
+        "ultra-detailed anime illustration, professional digital art, dramatic dark background, "
+        "award-winning artwork, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 체육 수행평가
     (
         ["멀리던지기", "멀리차기", "에어로빅", "줄넘기"],
-        "dynamic energetic sports action silhouette in motion, "
-        "colorful speed motion blur streaks, explosive energy burst particles, "
-        "vibrant blue orange gradient background, athletic power movement, "
+        "cinematic freeze-frame athlete in explosive peak action, "
+        "dramatic motion blur speed streaks, shattered light prism energy burst, "
+        "high-contrast deep blue orange cinematic color grade, "
+        "professional sports photography, 8K ultra detail, "
         "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 도덕 수행평가
     (
         ["도덕", "도덕적", "도덕적 행동", "도덕적 추론"],
-        "golden glowing balance scales floating in soft light, "
-        "peaceful compassionate warm rays, "
-        "ethereal harmony concept art, gentle warm tones, "
+        "luminous golden scales of justice floating in ethereal divine light, "
+        "soft glowing feathers drifting in sacred warm rays, "
+        "cinematic god rays volumetric fog, dreamlike harmony concept art, "
+        "professional CGI render, award-winning digital illustration, "
         "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 역사 수행평가 — 청나라·중국
     (
         ["청나라", "한족", "중국 역사"],
-        "ancient Chinese imperial palace at night, golden red lanterns glowing, "
-        "silk dragon embroidery texture overlay, historical map parchment background, "
-        "elegant sepia gold tones, cinematic, no text no watermark, vertical portrait 9:16",
+        "majestic Forbidden City at blue hour, ornate golden dragon pillars glowing, "
+        "cinematic low-angle shot with dramatic sky, "
+        "rich cinnabar red and imperial gold color palette, "
+        "8K hyperrealistic professional photography, cinematic color grading, "
+        "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 역사 수행평가 — 일반
     (
         ["역사", "독후감", "마인드맵", "자기주도 학습지"],
-        "ancient Korean historical scroll parchment texture, "
-        "ink brush painting style background, warm aged sepia amber tones, "
-        "no text no watermark, vertical portrait 9:16",
+        "ancient Korean palace at golden hour, exquisite brush painting style, "
+        "dramatic side lighting on aged scroll parchment texture, "
+        "rich sepia and amber cinematic color grade, bokeh fireflies, "
+        "award-winning fine art photography, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 수학 수행평가
     (
         ["일차부등식", "인생그래프", "수학"],
-        "glowing neon blue mathematical equations floating in dark space, "
-        "graph curves and geometric shapes, futuristic educational mathematics aesthetic, "
+        "mesmerizing neon blue-violet mathematical equations cascading in deep space, "
+        "glowing parabola curves and 3D geometry floating holographically, "
+        "cinematic lens flare, dark cosmic background with starfield, "
+        "hyperrealistic CGI render, 8K ultra-sharp, "
         "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 과학 수행평가
     (
         ["영양소", "광물", "광물 특성", "과학", "실험"],
-        "colorful science laboratory glassware with glowing liquids, "
-        "floating molecules DNA helix atoms bokeh, vibrant clean laboratory background, "
+        "stunning science lab with glowing luminescent liquid-filled beakers, "
+        "crystalline minerals sparkling under dramatic rim lighting, "
+        "cinematic teal and orange color grade, floating DNA helix bokeh, "
+        "professional scientific photography, 8K ultra detail, "
         "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 국어 수행평가
     (
         ["반어", "역설", "풍자", "국어", "문학", "서술형"],
-        "elegant Korean ink brush calligraphy flowing strokes on parchment, "
-        "classical literary poetry atmosphere, soft warm amber tones, "
-        "no text no watermark, vertical portrait 9:16",
+        "magnificent Korean ink calligraphy brushstroke in dramatic black flow, "
+        "aged golden parchment texture with bokeh soft light, "
+        "cinematic side-lit classical atmosphere, ink droplets splashing artistically, "
+        "award-winning fine art photography, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 음악 수행평가
     (
         ["칼림바", "음악신문", "음악"],
-        "colorful musical notes and treble clefs floating in warm concert light, "
-        "vibrant purple gold music atmosphere, kalimba thumb piano bokeh, "
-        "no text no watermark, vertical portrait 9:16",
+        "enchanting concert hall filled with floating luminous musical notes, "
+        "dramatic stage light beams cutting through smoke, "
+        "rich purple and warm gold cinematic color grade, "
+        "kalimba tines glinting in spotlight, bokeh string lights, "
+        "professional concert photography, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 영어 수행평가
     (
         ["영어 쓰기", "영어 듣기", "영어"],
-        "global communication concept speech bubbles bokeh, soft world map background, "
-        "clean modern blue white educational gradient, "
-        "no text no watermark, vertical portrait 9:16",
+        "sleek modern global education concept, glowing translucent speech bubbles, "
+        "neon blue world map hologram floating in dark air, "
+        "cinematic cool blue-white color grade, futuristic minimalist aesthetic, "
+        "professional advertising photography, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 한문 수행평가
     (
         ["창의 한자", "성어", "한문", "공익 광고"],
-        "traditional Chinese calligraphy ink brush on rice paper texture, "
-        "elegant red seal stamp accent, scholarly warm ambient, "
-        "no text no watermark, vertical portrait 9:16",
+        "exquisite Chinese ink calligraphy brushstroke on luxurious rice paper, "
+        "dramatic single beam spotlight on bold black strokes, "
+        "elegant vermillion seal stamp accent, rich warm scholarly atmosphere, "
+        "award-winning fine art, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 중국어 수행평가
     (
         ["한어병음", "국적", "중국어"],
-        "colorful Chinese red paper lanterns bokeh warm glow, "
-        "cultural education aesthetic, orange red gradient night sky, "
-        "no text no watermark, vertical portrait 9:16",
+        "vibrant Chinese festival night scene, rows of glowing crimson paper lanterns, "
+        "golden confetti bokeh falling gracefully, "
+        "cinematic warm orange-red color grade, luxury cultural atmosphere, "
+        "professional photography, 8K, no text no watermark, vertical portrait 9:16",
     ),
     # ─ 암기 비법
     (
         ["암기", "기억", "망각 곡선", "두문자법", "연상법"],
-        "glowing human brain neurons network visualization, "
-        "bioluminescent blue purple memory connections web, futuristic dark background, "
+        "breathtaking human brain with bioluminescent neuron network glowing electric blue, "
+        "synaptic sparks cascading like aurora through neural pathways, "
+        "deep black cosmic background, cinematic volumetric light, "
+        "hyperrealistic CGI render, 8K ultra-detail, "
         "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 시간 관리 / 포모도로
     (
         ["포모도로", "시간표", "플래너", "시간 관리", "시간 배분"],
-        "minimalist aesthetic glowing clock floating in soft bokeh, "
-        "pastel study planner desk organized notebook pencil, calm productive atmosphere, "
+        "ultra-premium minimal desk setup at golden hour, "
+        "sleek white notebook and elegant pen bathed in warm window light, "
+        "glowing brass hourglass with soft bokeh background, "
+        "cinematic shallow depth-of-field, luxury editorial photography, "
         "no text no watermark, vertical portrait 9:16",
     ),
     # ─ 시험 대비 / 기출 / 기말 (범용)
     (
         ["기출", "기말", "시험 대비", "수행평가", "중간고사", "오답", "공부"],
-        "Korean student studying at cozy night desk, "
-        "warm amber desk lamp glow, open textbooks and notebooks, "
-        "determined focused atmosphere, soft bokeh background, "
+        "cinematic Korean student studying at premium night desk, "
+        "warm amber desk lamp casting dramatic rim light on open textbook, "
+        "blurred city night view through window bokeh, "
+        "moody teal-orange cinematic color grade, award-winning editorial photography, "
         "no text no watermark, vertical portrait 9:16",
     ),
 ]
 
 _DEFAULT_PROMPT = (
-    "cozy Korean student study room at night, warm glowing desk lamp, "
-    "open textbooks and notebooks soft bokeh background, "
-    "motivational peaceful atmosphere, "
+    "cinematic premium Korean study room at night, "
+    "warm amber desk lamp with dramatic rim lighting, "
+    "luxury stationery and open textbook in foreground, "
+    "city bokeh through window in background, "
+    "moody teal and warm gold cinematic color grade, "
+    "award-winning editorial photography, "
     "no text no watermark, vertical portrait 9:16"
 )
 
@@ -181,7 +205,7 @@ def generate_bg_video(
         encoded = urllib.parse.quote(prompt)
         url = (
             f"https://image.pollinations.ai/prompt/{encoded}"
-            f"?width=1080&height=1920&nologo=true&enhance=true&model=flux"
+            f"?width=1080&height=1920&nologo=true&enhance=true&model=flux-realism"
         )
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "ShortsAuto/1.0"})
@@ -196,12 +220,12 @@ def generate_bg_video(
     if not img_path.exists() or img_path.stat().st_size < 10_000:
         return None
 
-    # ── Ken Burns: scale 1.30× → crop 이동 (pan 애니메이션)
-    # 1.30× 스케일로 1080×1920 주변에 pan 여유 확보
-    sw = 1404   # 1080 * 1.30 (짝수)
-    sh = 2496   # 1920 * 1.30 (짝수)
-    xp = sw - 1080   # 324px pan 폭
-    yp = sh - 1920   # 576px pan 높이
+    # ── Ken Burns: scale 1.40× → crop 이동 (pan 애니메이션)
+    # 1.40× 스케일로 1080×1920 주변에 더 넓은 pan 여유 확보 (더 역동적인 움직임)
+    sw = 1512   # 1080 * 1.40 (짝수)
+    sh = 2688   # 1920 * 1.40 (짝수)
+    xp = sw - 1080   # 432px pan 폭
+    yp = sh - 1920   # 768px pan 높이
     d  = duration
 
     # 해시 마지막 16진수로 4방향 중 선택 → 콘텐츠마다 다른 이동 패턴
@@ -231,7 +255,7 @@ def generate_bg_video(
         "-vf", vf,
         "-t", str(d),
         "-r", "30",
-        "-c:v", "libx264", "-crf", "20", "-preset", "fast",
+        "-c:v", "libx264", "-crf", "18", "-preset", "fast",
         "-pix_fmt", "yuv420p",
         str(vid_path),
     ]

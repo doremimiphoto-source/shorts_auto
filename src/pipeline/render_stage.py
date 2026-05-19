@@ -44,14 +44,22 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
         try:
             script = ctx.repos.scripts.get(video["script_id"])
 
-            # AI 콘텐츠 매칭 배경 생성 시도 (실패 시 기존 풀 폴백)
-            ai_cache_dir = ctx.project_root / "output" / "aibg_cache"
-            bg_video = _try_ai_bg(script, ai_cache_dir, ctx)
-            if bg_video is None:
-                bg_video = _select_content_bg(bg_dir, script, au) or selector.select_bg_video()
-                ctx.log.info("bg_source", source="pool", path=bg_video.name)
+            # 실사 풀 우선 → AI 폴백 (반복 방지: 동일 AI 프롬프트 캐시 문제)
+            bg_video = _select_content_bg(bg_dir, script, au)
+            if bg_video is not None:
+                ctx.log.info("bg_source", source="pool_match", path=bg_video.name)
             else:
-                ctx.log.info("bg_source", source="ai_generated", path=bg_video.name)
+                # 랜덤 풀 선택 (study/school 폴더 우선)
+                bg_video = _select_study_pool(bg_dir, au) or selector.select_bg_video()
+                ctx.log.info("bg_source", source="pool_random", path=bg_video.name)
+
+            # AI 배경은 풀이 완전히 비었을 때만 (폴백)
+            if bg_video is None:
+                ai_cache_dir = ctx.project_root / "output" / "aibg_cache"
+                bg_video = _try_ai_bg(script, ai_cache_dir, ctx)
+                if bg_video is None:
+                    bg_video = selector.select_bg_video()
+                ctx.log.info("bg_source", source="ai_fallback", path=bg_video.name)
 
             bgm = selector.select_bgm()
         except FileNotFoundError as e:
@@ -63,8 +71,9 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
             width=int(renderer_cfg.get("resolution", {}).get("width", 1080)),
             height=int(renderer_cfg.get("resolution", {}).get("height", 1920)),
             fps=int(renderer_cfg.get("fps", 30)),
-            video_crf=int(renderer_cfg.get("video_crf", 23)),
-            audio_bitrate=str(renderer_cfg.get("audio_bitrate", "192k")),
+            video_crf=int(renderer_cfg.get("video_crf", 18)),
+            video_preset=str(renderer_cfg.get("video_preset", "fast")),
+            audio_bitrate=str(renderer_cfg.get("audio_bitrate", "256k")),
             max_duration=int(renderer_cfg.get("max_duration_seconds", 58)),
             bgm_duck_db=float(renderer_cfg.get("bgm", {}).get("duck_db", -18.0)),
             speed_jitter=float(renderer_cfg.get("background", {}).get("randomize", {}).get("speed_jitter", 0.05)),
@@ -93,8 +102,46 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
                 logo=logo_path,
                 bar_rgb=bar_rgb,
             ))
+        except subprocess.TimeoutExpired:
+            # 타임아웃 → BG 파일 자동 블랙리스트 + 폴백 BG로 재시도 1회
+            au.blacklist("bg_video", str(bg_video), reason="ffmpeg_timeout_90s")
+            ctx.log.warning("bg_blacklisted_timeout", path=bg_video.name)
+            fallback_bg = _select_study_pool(bg_dir, au) or selector.select_bg_video()
+            bar_rgb = extract_pastel_bar_color(fallback_bg)
+            try:
+                composer.render(RenderInput(
+                    bg_video=fallback_bg,
+                    audio=audio_path,
+                    subtitle_srt=srt_path,
+                    bgm=bgm,
+                    output=final,
+                    logo=logo_path,
+                    bar_rgb=bar_rgb,
+                ))
+                bg_video = fallback_bg
+                ctx.log.info("render_fallback_ok", fallback=fallback_bg.name)
+            except (RuntimeError, subprocess.TimeoutExpired) as e2:
+                raise StageError(f"렌더 실패 (폴백 포함): {e2}") from e2
         except RuntimeError as e:
-            raise StageError(f"렌더 실패: {e}") from e
+            err_msg = str(e)
+            # geq 필터 오류(로고 관련)면 로고 없이 재시도 1회
+            if logo_path and ("geq" in err_msg or "Missing ')'" in err_msg or "filter" in err_msg.lower()):
+                ctx.log.warning("render_logo_filter_err_retry", error=err_msg[:200])
+                try:
+                    composer.render(RenderInput(
+                        bg_video=bg_video,
+                        audio=audio_path,
+                        subtitle_srt=srt_path,
+                        bgm=bgm,
+                        output=final,
+                        logo=None,
+                        bar_rgb=bar_rgb,
+                    ))
+                    ctx.log.info("render_no_logo_ok")
+                except (RuntimeError, subprocess.TimeoutExpired) as e2:
+                    raise StageError(f"렌더 실패 (로고 제거 재시도 포함): {e2}") from e2
+            else:
+                raise StageError(f"렌더 실패: {e}") from e
 
         # 검증 (FR-5.8)
         valid = _validate_video(final, expected=(cfg.width, cfg.height), max_duration=cfg.max_duration)
@@ -108,8 +155,44 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
         )
         au.record(asset_kind="bg_video", asset_path=str(bg_video), video_id=video_id)
         au.record(asset_kind="bgm", asset_path=str(bgm), video_id=video_id)
+
+        # 썸네일 생성 (실패해도 렌더 결과에 영향 없음)
+        thumb_path = _generate_thumbnail(ctx, video_id, script, bg_video, fonts_dir, out_dir)
+        if thumb_path:
+            # 기존 DB에 thumbnail_path 컬럼이 없으면 자동 추가 (마이그레이션)
+            try:
+                ctx.repos.db.execute("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT")
+            except Exception:
+                pass
+            ctx.repos.db.execute(
+                "UPDATE videos SET thumbnail_path = ? WHERE id = ?",
+                (str(thumb_path), video_id),
+            )
+            ctx.log.info("thumbnail_generated", path=thumb_path.name)
+
         state["message"] = f"final={final.name}, bg={bg_video.name}, bgm={bgm.name}"
         return final
+
+
+def _generate_thumbnail(ctx, video_id: int, script: dict | None,
+                        bg_video: Path, fonts_dir: Path, out_dir: Path) -> Path | None:
+    """썸네일 생성. 성공 시 Path, 실패 시 None."""
+    if script is None:
+        return None
+    try:
+        from ..renderer.thumbnail import ThumbnailInput, generate as gen_thumb
+        inp = ThumbnailInput(
+            title=script.get("title", ""),
+            hook=script.get("hook", ""),
+            twist=script.get("twist", ""),
+            hook_pattern=script.get("hook_pattern", ""),
+        )
+        thumb_dir = out_dir.parent / "thumbnails"
+        thumb_path = thumb_dir / f"thumb_{video_id}.jpg"
+        return gen_thumb(inp, thumb_path, fonts_dir, bg_video=bg_video)
+    except Exception as e:
+        ctx.log.warning("thumbnail_gen_failed", error=repr(e))
+        return None
 
 
 def _try_ai_bg(script: dict | None, cache_dir: Path, ctx) -> Path | None:
@@ -124,32 +207,59 @@ def _try_ai_bg(script: dict | None, cache_dir: Path, ctx) -> Path | None:
         return None
 
 
+def _collect_folder(bg_dir: Path, subfolder: str, au, *, tags: list[str] | None = None) -> list[Path]:
+    """bg_dir/subfolder 내 mp4 파일 목록. tags 지정 시 파일명 필터. 블랙리스트 제외."""
+    d = bg_dir / subfolder
+    if not d.exists():
+        return []
+    files = list(d.glob("*.mp4"))
+    if tags:
+        files = [p for p in files if any(t in p.name.lower() for t in tags)]
+    usable = [p for p in files if not au.is_blacklisted("bg_video", str(p))]
+    return usable or files  # 블랙리스트 제외 후 비면 전체 허용
+
+
+def _select_study_pool(bg_dir: Path, au) -> Path | None:
+    """study → school → motivation 폴더에서 랜덤 선택. 없으면 None."""
+    for sub in ("study", "school", "motivation"):
+        pool = _collect_folder(bg_dir, sub, au)
+        if pool:
+            return random.choice(pool)
+    return None
+
+
 def _select_content_bg(bg_dir: Path, script: dict | None, au) -> Path | None:
-    """스크립트 키워드로 분위기 맞는 BG 영상 선택. 없으면 None 반환."""
+    """스크립트 키워드 → 가장 어울리는 BG 영상 선택.
+
+    우선순위: study/school 실사 → interior → abstract (폴백)
+    study 키워드가 없으면 None 반환해 상위 로직에 위임.
+    """
     if script is None:
         return None
     full = " ".join([
         script.get("hook", ""), script.get("body", ""), script.get("twist", ""),
+        script.get("hook_pattern", ""),
     ])
-    # 공부/기출 콘텐츠 → 인테리어 우선(카페·침실·조용한 방), 폴백 bokeh
-    study_kw = ["공부", "시험", "집중", "기출", "암기", "포모도로", "오답", "수업", "학교", "학습"]
+
+    # 공부·학습 콘텐츠 → study/school 실사 영상 우선
+    study_kw = [
+        "공부", "시험", "집중", "기출", "암기", "포모도로", "오답", "수업", "학교",
+        "학습", "복습", "필기", "플래너", "루틴", "성적", "수행평가",
+    ]
     if any(kw in full for kw in study_kw):
-        def _collect(sub: str, tags: list[str]) -> list[Path]:
-            d = bg_dir / sub
-            if not d.exists():
-                return []
-            return [p for p in d.glob("*.mp4") if any(t in p.name.lower() for t in tags)]
-
-        # 1순위: 카페·침실·빈 방·아파트 (실내 분위기)
-        interior = _collect("interior", ["coffee", "bedroom", "room", "apartment", "window"])
-        # 2순위: abstract bokeh (폴백)
-        bokeh = _collect("abstract", ["bokeh"])
-
-        for pool in (interior, bokeh):
-            if not pool:
-                continue
-            usable = [p for p in pool if not au.is_blacklisted("bg_video", str(p))]
-            return random.choice(usable or pool)
+        # 1순위: study 실사 풀 (학생 책상·도서관·노트 등)
+        study_pool = _collect_folder(bg_dir, "study", au)
+        if study_pool:
+            return random.choice(study_pool)
+        # 2순위: school 실사 풀 (교실·복도)
+        school_pool = _collect_folder(bg_dir, "school", au)
+        if school_pool:
+            return random.choice(school_pool)
+        # 3순위: interior (카페·침실·방)
+        interior = _collect_folder(bg_dir, "interior", au,
+                                   tags=["coffee", "bedroom", "room", "window"])
+        if interior:
+            return random.choice(interior)
     return None
 
 

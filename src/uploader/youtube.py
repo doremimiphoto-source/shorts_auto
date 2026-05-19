@@ -109,3 +109,23 @@ class YouTubeUploader:
             upload_url=f"https://www.youtube.com/watch?v={video_id}",
             quota_units_used=self.UPLOAD_QUOTA_COST,
         )
+
+    def upload_thumbnail(self, *, youtube_video_id: str, thumbnail_path: Path) -> bool:
+        """커스텀 썸네일 등록. 성공 시 True, 실패 시 False (비치명적).
+
+        YouTube API quota: 50 units/건.
+        조건: 이미지 < 2 MB, 너비 ≥ 640 px, 16:9 권장.
+        """
+        self._ensure_service()
+        from googleapiclient.http import MediaFileUpload
+
+        media = MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg", resumable=False)
+        assert self._service is not None
+        try:
+            self._service.thumbnails().set(
+                videoId=youtube_video_id,
+                media_body=media,
+            ).execute()
+            return True
+        except Exception:
+            return False

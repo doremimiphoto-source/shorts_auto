@@ -31,8 +31,9 @@ class RenderConfig:
     width: int = 1080
     height: int = 1920
     fps: int = 30
-    video_crf: int = 23
-    audio_bitrate: str = "192k"
+    video_crf: int = 18
+    video_preset: str = "fast"
+    audio_bitrate: str = "256k"
     max_duration: int = 58
     bgm_duck_db: float = -18.0
     speed_jitter: float = 0.05
@@ -93,7 +94,7 @@ class VideoComposer:
             "-hide_banner", "-y",
             "-stream_loop", "-1", "-i", str(inp.bg_video),
             "-i", str(inp.audio),
-            "-i", str(inp.bgm),
+            "-stream_loop", "-1", "-i", str(inp.bgm),  # BGM도 루프 — TTS보다 짧아도 잘리지 않음
         ]
         if has_logo:
             cmd.extend(["-loop", "1", "-i", str(inp.logo)])
@@ -102,7 +103,7 @@ class VideoComposer:
             "-filter_complex", filter_complex,
             "-map", "[v]",
             "-map", "[a]",
-            "-c:v", "libx264", "-preset", "medium", "-crf", str(self.cfg.video_crf),
+            "-c:v", "libx264", "-preset", self.cfg.video_preset, "-crf", str(self.cfg.video_crf),
             "-pix_fmt", "yuv420p",
             "-r", str(self.cfg.fps),
             "-c:a", "aac", "-b:a", self.cfg.audio_bitrate,
@@ -110,7 +111,11 @@ class VideoComposer:
             "-t", str(self.cfg.max_duration),
             str(inp.output),
         ])
-        result = subprocess.run(cmd, capture_output=True, timeout=600, check=False)
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=90, check=False)
+        except subprocess.TimeoutExpired:
+            # 타임아웃 → 손상된 BG 파일 감지 신호로 상위에 전달
+            raise subprocess.TimeoutExpired(cmd, 90)
         if result.returncode != 0 or not inp.output.exists():
             raise RuntimeError(
                 f"FFmpeg 렌더 실패 (exit={result.returncode}): "
@@ -130,11 +135,15 @@ class VideoComposer:
         bot_y = top_y + vid_h     # 1570
         bot_h = _LAYOUT_BOT_H     # 350
 
-        contrast   = round(self.rng.uniform(0.95, 1.10), 3)
-        saturation = round(self.rng.uniform(0.90, 1.20), 3)
-        brightness = round(self.rng.uniform(-0.03, 0.05), 3)
+        contrast   = round(self.rng.uniform(1.05, 1.20), 3)
+        saturation = round(self.rng.uniform(1.10, 1.40), 3)
+        brightness = round(self.rng.uniform(-0.02, 0.03), 3)
         crop_y_expr = f"(ih-{vid_h})*{round(self.rng.uniform(0.0, 1.0), 3)}"
-        eq_filter = f"eq=contrast={contrast}:saturation={saturation}:brightness={brightness}"
+        # 비네트로 영화적 느낌 강화 (angle=PI/5 ≈ 36° 부드러운 가장자리 어둠)
+        eq_filter = (
+            f"eq=contrast={contrast}:saturation={saturation}:brightness={brightness},"
+            f"vignette=angle=PI/5"
+        )
 
         # 파스텔 바 색상 (FFmpeg 0xRRGGBB 포맷)
         r, g, b = bar_rgb
@@ -173,10 +182,10 @@ class VideoComposer:
         # ④ 자막 번인
         sub_chain = f"[{pre_sub}]subtitles='{sub_arg}':fontsdir='{fonts_arg}'[v]"
 
-        # ⑤ BGM 더킹
+        # ⑤ BGM 더킹 — duration=first: TTS 오디오([1:a]) 길이 기준으로 종료 (BGM이 짧아도 잘림 없음)
         audio_chain = (
             f"[2:a]volume={self.cfg.bgm_duck_db}dB[bgm];"
-            f"[1:a][bgm]amix=inputs=2:duration=shortest:dropout_transition=0[a]"
+            f"[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[a]"
         )
 
         parts = [bg_chain, canvas_chain]

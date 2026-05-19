@@ -62,9 +62,18 @@ def run(ctx: PipelineContext) -> int:
                     continue
             raise StageError("모든 LLM 백엔드가 사용 불가하거나 실패했습니다.")
 
+        # 최근 사용된 테마를 제외해 다양성 확보 (모든 테마 소진 시 리셋)
+        recent_themes = set(ctx.repos.sources.list_recent_themes(limit=len(themes)))
+        available_themes = [t for t in themes if t not in recent_themes]
+        if not available_themes:
+            available_themes = themes
+        ctx.log.info("crawl_theme_pool",
+                     total=len(themes), available=len(available_themes),
+                     excluded=len(recent_themes & set(themes)))
+
         exam_cfg = ctx.section("exam_season")
         crawler = LLMCreatorCrawler(
-            themes=themes,
+            themes=available_themes,
             llm_call=llm_call,
             lucky_charm_themes=list(exam_cfg.get("lucky_charm_themes", [])),
             exam_periods=list(exam_cfg.get("periods", [])),
@@ -74,8 +83,12 @@ def run(ctx: PipelineContext) -> int:
         if not crawler.is_available():
             raise StageSkipped("LLMCreatorCrawler가 사용 가능하지 않습니다.")
 
+        # 미사용 소재 + 최근 처리된 소재 모두 중복 검사 풀에 포함
         existing_motifs = [r["motif"] for r in ctx.repos.sources.pick_unused(limit=200)]
-        # 기존 motif 200개 외에 모든 sources 비교 — 너무 무거우면 임베딩 캐시 후속
+        used_motifs = ctx.repos.sources.list_recent_motifs(limit=100)
+        existing_set = set(existing_motifs)
+        existing_motifs = existing_motifs + [m for m in used_motifs if m not in existing_set]
+
         threshold = float(crawler_cfg.get("duplicate_threshold_cosine", 0.85))
 
         new_id: int | None = None

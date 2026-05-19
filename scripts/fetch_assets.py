@@ -34,11 +34,90 @@ from src.config import get_settings  # noqa: E402
 from src.utils.logging import get_logger, setup_logging  # noqa: E402
 
 
-# ---------- 키워드 풀 (사연 분위기에 어울리는 추상 배경) ----------
+# ---------- 키워드 풀 ----------
 BG_KEYWORDS_BY_CATEGORY = {
+    # ── 공부 실사 (채널 주력) ───────────────────────────────────────
+    "study": [
+        # 기존
+        "student studying desk lamp",
+        "open book reading close up",
+        "library quiet reading",
+        "school notebook writing pencil",
+        "cafe laptop student",
+        "hand writing notes paper",
+        "textbook highlighter study",
+        "desk stationery morning light",
+        # 신규 — 다양한 공부 장면
+        "student reading night desk",
+        "pencil writing paper close",
+        "concentration focus studying alone",
+        "planner schedule calendar writing",
+        "flashcard memorize study table",
+        "calculator homework math desk",
+        "highlighter marker textbook open",
+        "sticky notes study wall",
+        "headphones music studying desk",
+        "coffee cup study break morning",
+        "minimal desk setup clean",
+        "notebook pen coffee morning",
+        "student glasses reading book",
+        "study timer pomodoro desk",
+        "eraser pencil homework close",
+        "bookshelf books studying background",
+    ],
+    # ── 학교·교실 ──────────────────────────────────────────────────
+    "school": [
+        # 기존
+        "empty classroom sunlight",
+        "school hallway locker",
+        "chalk blackboard school",
+        "students walking school",
+        # 신규
+        "teacher writing whiteboard classroom",
+        "students group study table",
+        "school library bookshelf quiet",
+        "blackboard math equation chalk",
+        "school cafeteria lunch students",
+        "graduation ceremony diploma",
+        "school entrance gate morning",
+        "science lab experiment school",
+    ],
+    # ── 동기부여·성취 ──────────────────────────────────────────────
+    "motivation": [
+        "success achievement celebration confetti",
+        "trophy award gold winner",
+        "mountain summit sunrise achievement",
+        "clock time management hourglass",
+        "running athlete sport success",
+        "hand fist air victory",
+        "stars night sky dreaming",
+        "open road journey sunrise",
+    ],
+    # ── 인테리어 (폴백) ────────────────────────────────────────────
+    "interior": [
+        "empty room dim",
+        "coffee shop ambient",
+        "bedroom window",
+        "old apartment",
+        # 신규
+        "cozy reading nook warm lamp",
+        "minimal room sunlight window",
+        "warm cafe interior bokeh",
+        "study room window morning",
+    ],
+    # ── 시티·자연 (폴백) ───────────────────────────────────────────
     "city": ["dark city night", "rainy street", "subway tunnel", "downtown traffic"],
-    "nature": ["foggy forest", "sunset clouds", "ocean waves slow", "mountain mist"],
-    "interior": ["empty room dim", "coffee shop ambient", "bedroom window", "old apartment"],
+    "nature": [
+        "foggy forest",
+        "sunset clouds",
+        "ocean waves slow",
+        "mountain mist",
+        # 신규
+        "rainy window cozy indoor",
+        "autumn leaves fall park",
+        "cherry blossom spring walk",
+        "snow winter quiet street",
+    ],
     "abstract": ["bokeh blur", "smoke slow motion", "ink in water", "particles dust"],
 }
 
