@@ -116,11 +116,18 @@ class VideoComposer:
         except subprocess.TimeoutExpired:
             # 타임아웃 → 손상된 BG 파일 감지 신호로 상위에 전달
             raise subprocess.TimeoutExpired(cmd, 90)
-        if result.returncode != 0 or not inp.output.exists():
+
+        # 0xC000013A(3221225786) = Windows SIGTERM/창닫기로 인한 FFmpeg 종료.
+        # 실제 렌더는 완료됐을 수 있으므로 출력 파일 크기로 최종 판단.
+        _WINDOWS_SIGTERM = 3221225786
+        output_ok = inp.output.exists() and inp.output.stat().st_size > 0
+        if result.returncode != 0 and not (result.returncode == _WINDOWS_SIGTERM and output_ok):
             raise RuntimeError(
                 f"FFmpeg 렌더 실패 (exit={result.returncode}): "
                 f"{result.stderr.decode('utf-8', 'replace')[-2000:]}"
             )
+        if not output_ok:
+            raise RuntimeError(f"FFmpeg 렌더 실패: 출력 파일 없음 또는 빈 파일")
         return inp.output
 
     def _build_filter_complex(
