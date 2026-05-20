@@ -2,14 +2,198 @@
 
 keyword_mode=True (기본): 나레이션 전문 대신 핵심 키워드만 표시.
 keyword_mode=False: faster-whisper 전문 자막 (레거시).
+
+후처리 (keyword_mode=True):
+  - 첫째/둘째/셋째 이어붙은 Dialogue 분리
+  - silencedetect 실제 발화 경계로 타이밍 스냅 (±2s)
+  - 강조 구절(첫째/둘째/셋째) 직전 0.38초, 결론(이대로만) 직전 0.65초 시각 공백
 """
 
 from __future__ import annotations
 
+import re
+import subprocess
 from pathlib import Path
 
 from ..subtitle.whisper_engine import WhisperSubtitleEngine, make_styled_subtitles
 from .context import PipelineContext, StageError, stage_timer
+
+# ── 자막 싱크 후처리 헬퍼 ─────────────────────────────────────────────────────
+
+_EMPH_RE  = re.compile(r"^(첫째|둘째|셋째|이대로만)")
+_SPLIT_RE = re.compile(r"\.\s+(첫째|둘째|셋째),")
+
+
+def _ass_ts(sec: float) -> str:
+    h = int(sec // 3600)
+    m = int((sec % 3600) // 60)
+    s = sec % 60
+    return f"{h}:{m:02d}:{s:05.2f}"
+
+
+def _parse_ts(ts: str) -> float:
+    h, m, s = ts.strip().split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def _rewrap(text: str, cpl: int = 19) -> str:
+    words = text.replace("\\N", " ").split(" ")
+    lines, cur = [], ""
+    for w in words:
+        cand = (cur + " " + w).strip() if cur else w
+        if len(cand) <= cpl:
+            cur = cand
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return "\\N".join(lines)
+
+
+def _detect_silences(audio: Path) -> list[tuple[float, float]]:
+    """FFmpeg silencedetect로 무음 구간 반환."""
+    r = subprocess.run(
+        ["ffmpeg", "-i", str(audio),
+         "-af", "silencedetect=noise=-35dB:d=0.15",
+         "-f", "null", "-"],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    silences: list[tuple[float, float]] = []
+    s: float | None = None
+    for line in r.stderr.splitlines():
+        ms = re.search(r"silence_start:\s*([\d.]+)", line)
+        if ms:
+            s = float(ms.group(1))
+        me = re.search(r"silence_end:\s*([\d.]+)", line)
+        if me and s is not None:
+            silences.append((s, float(me.group(1))))
+            s = None
+    return silences
+
+
+def _nearest(val: float, pool: list[float], window: float) -> float | None:
+    best, bd = None, window + 1.0
+    for p in pool:
+        d = abs(p - val)
+        if d < bd:
+            bd, best = d, p
+    return best if bd <= window else None
+
+
+def _fix_subtitle_splits(path: Path) -> None:
+    """첫째/둘째/셋째가 한 Dialogue에 이어붙은 경우 in-place 분리."""
+    lines = path.read_text("utf-8").splitlines()
+    out: list[str] = []
+    changed = False
+    for ln in lines:
+        if not ln.startswith("Dialogue:"):
+            out.append(ln)
+            continue
+        fields = ln.split(",", 9)
+        if len(fields) < 10:
+            out.append(ln)
+            continue
+        text = fields[9]
+        om = re.match(r"^(\{[^}]*\})", text)
+        ovr, body = (om.group(1), text[om.end():]) if om else ("", text)
+        sm = _SPLIT_RE.search(body)
+        if not sm:
+            out.append(ln)
+            continue
+        before = body[: sm.start() + 1]
+        after  = body[sm.start() + 2:]
+        t0 = _parse_ts(fields[1])
+        t1 = _parse_ts(fields[2])
+        p0 = len(re.sub(r"\\N", "", before))
+        p1 = len(re.sub(r"\\N", "", after))
+        mid = t0 + (t1 - t0) * p0 / (p0 + p1)
+        hd = fields[:9]
+
+        def _row(s: float, e: float, bt: str,
+                 _hd: list = hd, _ovr: str = ovr) -> str:
+            r = _hd[:]
+            r[1] = _ass_ts(s)
+            r[2] = _ass_ts(e)
+            return ",".join(r) + "," + _ovr + bt
+
+        out.append(_row(t0, mid, before))
+        out.append(_row(mid, t1, _rewrap(after)))
+        changed = True
+    if changed:
+        path.write_text("\n".join(out), "utf-8")
+
+
+def _enhance_subtitle_timing(
+    path: Path,
+    silences: list[tuple[float, float]],
+    emphasis_pause: float = 0.38,
+    conclusion_pause: float = 0.65,
+) -> None:
+    """실제 발화 경계로 자막 타이밍 스냅 + 강조 전 시각 공백 (in-place)."""
+    s_ends   = [se for _, se in silences]
+    s_starts = [ss for ss, _ in silences]
+
+    raw = path.read_text("utf-8").splitlines()
+    header: list[str] = []
+    dlgs: list[dict] = []
+    in_events = False
+
+    for ln in raw:
+        if ln.strip() == "[Events]":
+            in_events = True
+            header.append(ln)
+            continue
+        if not in_events or not ln.startswith("Dialogue:"):
+            header.append(ln)
+            continue
+        f = ln.split(",", 9)
+        if len(f) < 10:
+            header.append(ln)
+            continue
+        layer = f[0].split(":")[-1].strip()
+        t0, t1 = _parse_ts(f[1]), _parse_ts(f[2])
+        om = re.match(r"^(\{[^}]*\})", f[9])
+        ovr = om.group(1) if om else ""
+        body = f[9][len(ovr):]
+        dlgs.append({"layer": layer, "t0": t0, "t1": t1,
+                     "hd": f[:9], "ovr": ovr, "body": body})
+
+    # ① 발화 경계 스냅 (window ±2.0s, Title 제외)
+    for dlg in dlgs:
+        if dlg["layer"] == "1":
+            continue
+        if s_ends:
+            snapped = _nearest(dlg["t0"], s_ends, 2.0)
+            if snapped is not None:
+                dlg["t0"] = snapped
+        if s_starts:
+            candidates = [(abs(ss - dlg["t1"]), ss)
+                          for ss in s_starts if ss > dlg["t0"] + 0.3]
+            if candidates:
+                dlg["t1"] = max(min(candidates)[1], dlg["t0"] + 0.4)
+
+    # ② 강조 구절 직전 시각 공백
+    non_title = [d for d in dlgs if d["layer"] != "1"]
+    for i, dlg in enumerate(non_title):
+        if not _EMPH_RE.match(dlg["body"]) or i == 0:
+            continue
+        prev  = non_title[i - 1]
+        pause = conclusion_pause if dlg["body"].startswith("이대로만") else emphasis_pause
+        if dlg["t0"] - prev["t1"] < pause:
+            new_t1 = dlg["t0"] - pause
+            if new_t1 > prev["t0"] + 0.3:
+                prev["t1"] = new_t1
+
+    # ③ 출력
+    out = header[:]
+    for dlg in dlgs:
+        row = dlg["hd"][:]
+        row[1] = _ass_ts(dlg["t0"])
+        row[2] = _ass_ts(dlg["t1"])
+        out.append(",".join(row) + "," + dlg["ovr"] + dlg["body"])
+    path.write_text("\n".join(out), "utf-8")
 
 
 def run(ctx: PipelineContext, *, video_id: int) -> Path:
@@ -40,6 +224,17 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
                 out_ass=out_ass,
             )
             out_srt = out_ass
+
+            # 자막 싱크 후처리: 분리 → silencedetect 스냅 → 강조 공백
+            try:
+                silences = _detect_silences(audio_path)
+                if silences:
+                    _fix_subtitle_splits(out_ass)
+                    _enhance_subtitle_timing(out_ass, silences)
+                    ctx.log.info("subtitle_enhanced",
+                                 silences=len(silences), path=out_ass.name)
+            except Exception as e:
+                ctx.log.warning("subtitle_enhance_failed", error=repr(e))
         else:
             whisper_cfg = sub_cfg.get("whisper", {})
             engine = WhisperSubtitleEngine(

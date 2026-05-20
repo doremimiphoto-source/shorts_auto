@@ -35,7 +35,7 @@ class RenderConfig:
     video_preset: str = "fast"
     audio_bitrate: str = "256k"
     max_duration: int = 58
-    bgm_duck_db: float = -18.0
+    bgm_duck_db: float = -22.0   # -18 → -22: BGM을 더 낮춰 나레이션 명료도 향상
     speed_jitter: float = 0.05
     fonts_dir: Path = Path("assets/fonts")
 
@@ -44,6 +44,19 @@ class RenderConfig:
 _LAYOUT_TOP_H   = 480   # 상단 파스텔 타이틀 바
 _LAYOUT_VIDEO_H = 1160  # 중앙 영상 윈도우 (480~1640)
 _LAYOUT_BOT_H   = 280   # 하단 파스텔 채널 바
+
+
+def _probe_audio_duration(audio: Path) -> float:
+    """ffprobe로 오디오 길이(초) 반환. 실패 시 30.0."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+            capture_output=True, timeout=10, check=False,
+        )
+        return float(r.stdout.decode().strip())
+    except Exception:
+        return 30.0
 
 
 def extract_pastel_bar_color(bg_video: Path, ffmpeg_bin: str = "ffmpeg") -> tuple[int, int, int]:
@@ -83,10 +96,12 @@ class VideoComposer:
         inp.output.parent.mkdir(parents=True, exist_ok=True)
         speed = 1.0 + self.rng.uniform(-self.cfg.speed_jitter, self.cfg.speed_jitter)
         has_logo = inp.logo is not None and inp.logo.exists()
+        audio_dur = _probe_audio_duration(inp.audio)
 
         filter_complex = self._build_filter_complex(
             speed=speed, srt_path=inp.subtitle_srt,
             has_logo=has_logo, bar_rgb=inp.bar_rgb,
+            audio_duration=audio_dur,
         )
 
         cmd = [
@@ -133,34 +148,57 @@ class VideoComposer:
     def _build_filter_complex(
         self, *, speed: float, srt_path: Path,
         has_logo: bool = False, bar_rgb: tuple[int, int, int] = (210, 205, 220),
+        audio_duration: float = 30.0,
     ) -> str:
         sub_arg   = str(srt_path).replace("\\", "/").replace(":", r"\:")
         fonts_arg = str(self.cfg.fonts_dir).replace("\\", "/").replace(":", r"\:")
         w, h = self.cfg.width, self.cfg.height
-        vid_h = _LAYOUT_VIDEO_H   # 1090
+        vid_h = _LAYOUT_VIDEO_H   # 1160
         top_y = _LAYOUT_TOP_H     # 480
-        bot_y = top_y + vid_h     # 1570
-        bot_h = _LAYOUT_BOT_H     # 350
+        bot_y = top_y + vid_h     # 1640
+        bot_h = _LAYOUT_BOT_H     # 280
 
         contrast   = round(self.rng.uniform(1.05, 1.20), 3)
         saturation = round(self.rng.uniform(1.10, 1.40), 3)
         brightness = round(self.rng.uniform(-0.02, 0.03), 3)
         crop_y_expr = f"(ih-{vid_h})*{round(self.rng.uniform(0.0, 1.0), 3)}"
-        # 비네트로 영화적 느낌 강화 (angle=PI/5 ≈ 36° 부드러운 가장자리 어둠)
+
+        # Warm LUT (시네마틱 오렌지-틸 톤)
+        warm_lut = (
+            "curves="
+            "r='0/0 0.25/0.27 0.75/0.80 1/1.0':"
+            "g='0/0 0.25/0.24 0.75/0.73 1/0.97':"
+            "b='0/0.03 0.25/0.21 0.75/0.66 1/0.87'"
+        )
         eq_filter = (
             f"eq=contrast={contrast}:saturation={saturation}:brightness={brightness},"
+            f"{warm_lut},"
             f"vignette=angle=PI/5"
         )
+
+        # Ken Burns: 110% 확대 후 천천히 가로 패닝 (방향 랜덤)
+        kb_w  = round(w * 1.1)       # 1188
+        kb_h  = round(vid_h * 1.1)   # 1276
+        kb_cy = (kb_h - vid_h) // 2  # 58 (수직 중앙)
+        pan   = kb_w - w             # 108 px
+        dur   = max(audio_duration, 1.0)
+        if self.rng.random() < 0.5:  # left→right
+            kb_cx = f"({pan}*t/{dur:.1f})"
+        else:                        # right→left
+            kb_cx = f"({pan}-{pan}*t/{dur:.1f})"
 
         # 파스텔 바 색상 (FFmpeg 0xRRGGBB 포맷)
         r, g, b = bar_rgb
         bar_hex = f"0x{r:02x}{g:02x}{b:02x}"
 
-        # ① BG 영상 → 영상 윈도우(1080×1090) 크롭·색보정
+        # ① BG 영상 → 크롭 → Ken Burns(110%) → 색보정
         bg_chain = (
             f"[0:v]setpts={1.0/speed:.4f}*PTS,"
             f"scale='if(gt(a,{w}/{vid_h}),-2,{w})':'if(gt(a,{w}/{vid_h}),{vid_h},-2)',"
-            f"crop={w}:{vid_h}:(iw-{w})/2:{crop_y_expr},{eq_filter}[bg_crop]"
+            f"crop={w}:{vid_h}:(iw-{w})/2:{crop_y_expr},"
+            f"scale={kb_w}:{kb_h}:flags=lanczos,"
+            f"crop={w}:{vid_h}:x='{kb_cx}':y={kb_cy},"
+            f"{eq_filter}[bg_crop]"
         )
 
         # ② 파스텔 캔버스(1080×1920) + 영상 윈도우 합성 (구분선 없음)
