@@ -15,9 +15,19 @@ import sys
 import uuid
 from pathlib import Path
 
+import io
+import os
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.stdout.reconfigure(encoding="utf-8")
+
+# pythonw.exe 환경(콘솔 없음)에서는 stdout/stderr가 None — null stream으로 대체
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+else:
+    sys.stdout.reconfigure(encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 from src.config import get_settings
 from src.db import open_database
