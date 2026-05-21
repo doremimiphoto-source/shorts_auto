@@ -14,11 +14,12 @@ from .base import RewriteResult, Rewriter
 class GeminiRewriter(Rewriter):
     name = "gemini"
 
-    def __init__(self, *, api_key: str, model: str = "gemini-2.5-flash", temperature: float = 0.85, max_output_tokens: int = 8192) -> None:
+    def __init__(self, *, api_key: str, model: str = "gemini-2.5-flash", temperature: float = 0.85, max_output_tokens: int = 8192, timeout_sec: int = 90) -> None:
         self.api_key = api_key
         self.model = model
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
+        self.timeout_sec = timeout_sec
         self._client = None
 
     def is_available(self) -> bool:
@@ -27,10 +28,12 @@ class GeminiRewriter(Rewriter):
     def _ensure_client(self) -> None:
         if self._client is not None:
             return
-        # 임포트는 지연 (의존성 미설치 환경에서 모듈 임포트만으로 실패하지 않도록)
         import google.genai as genai
 
-        self._client = genai.Client(api_key=self.api_key)
+        self._client = genai.Client(
+            api_key=self.api_key,
+            http_options={"timeout": self.timeout_sec},
+        )
 
     def generate(
         self,

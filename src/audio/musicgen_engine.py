@@ -36,6 +36,17 @@ MOOD_PROMPTS: dict[str, list[str]] = {
         "mystery resolved cinematic underscore, plucked strings, contemplative",
         "epic emotional twist moment, soaring strings building tension to release",
     ],
+    "focus": [
+        "lo-fi hip hop beats, soft piano, mellow, study music, no lyrics, chill",
+        "ambient lo-fi chill, warm vinyl crackle, soft piano loop, relaxed concentration",
+        "gentle lo-fi guitar loop, calm background, study session, soft drums",
+        "minimal piano melody, cozy atmosphere, soft pads, focus music",
+    ],
+    "upbeat": [
+        "upbeat positive acoustic guitar, bright, cheerful, motivational, light drums",
+        "happy light piano melody, optimistic, encouraging, gentle percussion",
+        "bright ukulele and guitar, warm positive, carefree, motivational background",
+    ],
 }
 
 

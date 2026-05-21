@@ -12,7 +12,7 @@ app:
 # ---------- 파이프라인 (FR-7) ----------
 pipeline:
   daily_target_count: 3                # 일 업로드 목표 (KPI: 3개월 3건/일, 6개월 5건/일)
-  schedule_times: ["07:00", "18:00", "22:00"]   # KST 기준 실행 시각 (Windows 작업 스케줄러)
+  schedule_times: ["07:00", "15:30", "18:00", "22:00"]   # KST 기준 실행 시각 (Windows 작업 스케줄러)
   upload_jitter_minutes: 20            # 업로드 간격 ±20분 랜덤화 (FR-6.9)
   lock_file: data/pipeline.lock
   killswitch_file: data/killswitch.flag
@@ -197,10 +197,10 @@ renderer:
   fps: 30
   video_codec: libx264
   video_crf: 18
-  video_preset: medium
+  video_preset: fast
   audio_codec: aac
   audio_bitrate: 256k
-  max_duration_seconds: 30             # FR-5.2 (15~30초 Shorts)
+  max_duration_seconds: 58             # Shorts 최대 60초, 여유 2초
   channel_logo: assets/channel_logo.jpg
 
   background:
@@ -215,7 +215,7 @@ renderer:
   bgm:
     pool_dir: assets/bgm
     min_pool_size: 30                  # FR-5.5
-    duck_db: -18                       # 사이드체인 더킹 (FR-5.3)
+    duck_db: -22                       # 사이드체인 더킹 — 나레이션 명료도 우선 (FR-5.3)
     blacklist_path: data/bgm_blacklist.json
     content_id_check_after_minutes: 10 # 업로드 후 검사 (A10)
 

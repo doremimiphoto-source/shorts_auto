@@ -171,6 +171,23 @@ def main() -> None:
                 extra={"run_id": run_id, "video_id": str(video_id) if video_id else "-"},
             )
 
+    # ── daily_kpi 집계 ──────────────────────────────────────────
+    try:
+        db.execute(
+            """INSERT INTO daily_kpi
+               (snapshot_date, uploads_attempted, uploads_succeeded, uploads_failed, notes, snapshot_at)
+               VALUES (date('now','localtime'), ?, ?, ?, ?, datetime('now','localtime'))
+               ON CONFLICT(snapshot_date) DO UPDATE SET
+                 uploads_attempted  = uploads_attempted  + excluded.uploads_attempted,
+                 uploads_succeeded  = uploads_succeeded  + excluded.uploads_succeeded,
+                 uploads_failed     = uploads_failed     + excluded.uploads_failed,
+                 snapshot_at        = excluded.snapshot_at""",
+            (target, len(results), len(errors), f"run_id={run_id}"),
+        )
+        db.commit()
+    except Exception as kpi_err:
+        log.warning("kpi_write_failed", error=repr(kpi_err))
+
     # ── 배치 완료 알림 ──────────────────────────────────────────
     if results:
         result_lines = [f"• [{r['hook_pattern']}] {r['title']}\n  → {r['yt_url']}" for r in results]

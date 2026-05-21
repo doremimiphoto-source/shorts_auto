@@ -124,8 +124,24 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
                 raise StageError(f"렌더 실패 (폴백 포함): {e2}") from e2
         except RuntimeError as e:
             err_msg = str(e)
+            # SIGTERM + 출력 미생성: 동일 조건으로 1회 재시도 (배터리 전환 등 외부 종료 대응)
+            if "exit=3221225786" in err_msg:
+                ctx.log.warning("render_sigterm_retry", error=err_msg[:200])
+                try:
+                    composer.render(RenderInput(
+                        bg_video=bg_video,
+                        audio=audio_path,
+                        subtitle_srt=srt_path,
+                        bgm=bgm,
+                        output=final,
+                        logo=logo_path,
+                        bar_rgb=bar_rgb,
+                    ))
+                    ctx.log.info("render_sigterm_retry_ok")
+                except (RuntimeError, subprocess.TimeoutExpired) as e2:
+                    raise StageError(f"렌더 실패 (SIGTERM 재시도 포함): {e2}") from e2
             # geq 필터 오류(로고 관련)면 로고 없이 재시도 1회
-            if logo_path and ("geq" in err_msg or "Missing ')'" in err_msg or "filter" in err_msg.lower()):
+            elif logo_path and ("geq" in err_msg or "Missing ')'" in err_msg or "filter" in err_msg.lower()):
                 ctx.log.warning("render_logo_filter_err_retry", error=err_msg[:200])
                 try:
                     composer.render(RenderInput(

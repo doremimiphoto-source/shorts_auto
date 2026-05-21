@@ -5,7 +5,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from .base import RewriteResult, Rewriter
+
+_log = logging.getLogger(__name__)
 
 
 class RewriterChain:
@@ -36,6 +40,7 @@ class RewriterChain:
                     prompt_template=prompt_template,
                 )
             except Exception as e:
+                _log.warning("llm_backend_failed", extra={"backend": backend.name, "error": repr(e)[:200]})
                 last_error = e
                 continue
         raise RuntimeError(f"모든 LLM 백엔드 실패. last_error={last_error!r}")

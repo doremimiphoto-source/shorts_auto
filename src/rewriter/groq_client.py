@@ -12,11 +12,12 @@ from .gemini_client import _parse_response
 class GroqRewriter(Rewriter):
     name = "groq"
 
-    def __init__(self, *, api_key: str, model: str = "llama-3.1-8b-instant", temperature: float = 0.85, max_tokens: int = 1024) -> None:
+    def __init__(self, *, api_key: str, model: str = "llama-3.1-8b-instant", temperature: float = 0.85, max_tokens: int = 1024, timeout_sec: int = 60) -> None:
         self.api_key = api_key
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.timeout_sec = timeout_sec
         self._client = None
 
     def is_available(self) -> bool:
@@ -27,7 +28,7 @@ class GroqRewriter(Rewriter):
             return
         from groq import Groq
 
-        self._client = Groq(api_key=self.api_key)
+        self._client = Groq(api_key=self.api_key, timeout=float(self.timeout_sec))
 
     def generate(
         self,

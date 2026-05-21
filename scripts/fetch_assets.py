@@ -92,6 +92,23 @@ BG_KEYWORDS_BY_CATEGORY = {
         "hand fist air victory",
         "stars night sky dreaming",
         "open road journey sunrise",
+        "woman smiling confident achievement",
+        "sunrise morning fresh start",
+        "notebook goal setting positive",
+        "hands clapping celebration success",
+    ],
+    # ── 집중·몰입 (신규) ────────────────────────────────────────────
+    "focus": [
+        "close up hands writing pen paper",
+        "pencil tip paper macro close",
+        "eye reading book concentration",
+        "bokeh background desk lamp warm",
+        "hourglass sand time focus",
+        "candle burning quiet study",
+        "minimal white desk morning sunlight",
+        "typewriter keys close macro",
+        "clock ticking study time",
+        "deep focus study alone window",
     ],
     # ── 인테리어 (폴백) ────────────────────────────────────────────
     "interior": [
@@ -99,34 +116,57 @@ BG_KEYWORDS_BY_CATEGORY = {
         "coffee shop ambient",
         "bedroom window",
         "old apartment",
-        # 신규
         "cozy reading nook warm lamp",
         "minimal room sunlight window",
         "warm cafe interior bokeh",
         "study room window morning",
+        "library shelf books quiet",
+        "kitchen morning coffee sunlight",
+        "living room plant window light",
     ],
     # ── 시티·자연 (폴백) ───────────────────────────────────────────
-    "city": ["dark city night", "rainy street", "subway tunnel", "downtown traffic"],
+    "city": [
+        "dark city night",
+        "rainy street",
+        "subway tunnel",
+        "downtown traffic",
+        "busy crosswalk city morning",
+        "bicycle city commute spring",
+        "neon sign night urban",
+    ],
     "nature": [
         "foggy forest",
         "sunset clouds",
         "ocean waves slow",
         "mountain mist",
-        # 신규
         "rainy window cozy indoor",
         "autumn leaves fall park",
         "cherry blossom spring walk",
         "snow winter quiet street",
+        "green field meadow calm breeze",
+        "waterfall river peaceful nature",
+        "sunrise horizon golden sky",
     ],
-    "abstract": ["bokeh blur", "smoke slow motion", "ink in water", "particles dust"],
+    "abstract": [
+        "bokeh blur",
+        "smoke slow motion",
+        "ink in water",
+        "particles dust",
+        "glitter sparkle bokeh slow",
+        "light flare lens abstract",
+        "water surface reflection ripple",
+        "sand texture close minimal",
+    ],
 }
 
 # Internet Archive Audio (Public Domain) 무드별 검색 키워드
 IA_QUERIES_BY_MOOD = {
-    "tension": ["suspense cinematic", "dramatic underscore"],
-    "sad": ["melancholy piano", "elegy strings"],
-    "calm": ["ambient quiet", "soft piano slow"],
-    "twist": ["dramatic reveal", "cinematic orchestral"],
+    "tension": ["suspense cinematic", "dramatic underscore", "dark thriller music", "tense background score", "noir mystery instrumental", "thriller score piano"],
+    "sad": ["melancholy piano", "elegy strings", "sad ambient music", "emotional piano solo"],
+    "calm": ["ambient quiet", "soft piano slow", "peaceful nature sounds", "gentle acoustic guitar"],
+    "twist": ["dramatic reveal", "cinematic orchestral", "epic orchestral moment", "soaring strings music"],
+    "focus": ["lo-fi study music", "ambient focus concentration", "soft background study", "quiet piano looping", "piano solo gentle", "acoustic meditation", "relaxing piano instrumental", "new age piano solo"],
+    "upbeat": ["upbeat positive music", "cheerful light acoustic", "happy background music", "bright motivational instrumental"],
 }
 
 
