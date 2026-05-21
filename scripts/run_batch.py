@@ -184,7 +184,6 @@ def main() -> None:
                  snapshot_at        = excluded.snapshot_at""",
             (target, len(results), len(errors), f"run_id={run_id}"),
         )
-        db.commit()
     except Exception as kpi_err:
         log.warning("kpi_write_failed", error=repr(kpi_err))
 
