@@ -15,7 +15,6 @@ import sys
 import uuid
 from pathlib import Path
 
-import io
 import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
