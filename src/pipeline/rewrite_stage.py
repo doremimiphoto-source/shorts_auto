@@ -105,14 +105,17 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         sim_cum = float(cosine_mean(cand_vec, corpus_cum)) if corpus_cum is not None else 0.0
         # ④ 업로드 성공 영상 전체 대비 (기간 제한 없음 — 컨셉 중복 차단)
         uploaded = ctx.repos.scripts.list_uploaded_scripts(limit=500)
-        corpus_uploaded = _corpus_from_rows(uploaded, embedding_model)
-        sim_uploaded = float(cosine_max(cand_vec, corpus_uploaded)) if corpus_uploaded is not None else 0.0
+        sim_uploaded, best_uploaded = _best_match_from_rows(cand_vec, uploaded, embedding_model)
 
+        _best_yt = best_uploaded.get("youtube_video_id", "")
+        _best_url = f"https://youtu.be/{_best_yt}" if _best_yt else ""
         ctx.log.info("similarity_checks",
                      sim_motif=round(sim_motif, 4),
                      sim_30d=round(sim_30d, 4),
                      sim_cum=round(sim_cum, 4),
-                     sim_uploaded=round(sim_uploaded, 4))
+                     sim_uploaded=round(sim_uploaded, 4),
+                     uploaded_match=best_uploaded.get("title", ""),
+                     uploaded_match_url=_best_url)
 
         # lucky_charm은 구조적으로 같은 전설을 반복하므로 30일 임계값 완화
         hook_used = result.hook_pattern_used or hook_pattern
@@ -135,8 +138,9 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
             _block_source(f"누적 평균 유사도 초과: {sim_cum:.3f}")
             raise StageSkipped(f"누적 평균 유사도 초과: {sim_cum:.3f}")
         if sim_uploaded >= float(sim_cfg.get("uploaded_max", 0.85)):
-            _block_source(f"업로드 영상 컨셉 중복: {sim_uploaded:.3f}")
-            raise StageSkipped(f"업로드 영상 컨셉 중복: {sim_uploaded:.3f}")
+            match_info = f"← [{best_uploaded.get('title', '?')}] {_best_url}".strip()
+            _block_source(f"업로드 영상 컨셉 중복: {sim_uploaded:.3f} {match_info}")
+            raise StageSkipped(f"업로드 영상 컨셉 중복: {sim_uploaded:.3f} {match_info}")
 
         # 6. DB 저장
         script_id = ctx.repos.scripts.insert(
@@ -159,6 +163,36 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         ctx.repos.sources.mark_status(source_id, "used")
         state["message"] = f"script_id={script_id}, model={result.model_used}"
         return script_id
+
+
+def _best_match_from_rows(
+    cand_vec: "np.ndarray",
+    rows: list[dict],
+    model_name: str,
+) -> "tuple[float, dict]":
+    """rows 중 cand_vec와 가장 유사한 항목의 (cosine_score, row) 반환.
+
+    캐시된 embedding BLOB을 벡터화하여 argmax — 500건도 수십 ms.
+    """
+    if not rows:
+        return 0.0, {}
+
+    vecs: list["np.ndarray"] = []
+    valid_rows: list[dict] = []
+    for row in rows:
+        raw = row.get("embedding")
+        if raw:
+            v = deserialize(raw)
+            vecs.append(v.reshape(-1) if v.ndim > 1 else v)
+            valid_rows.append(row)
+
+    if not vecs:
+        return 0.0, {}
+
+    mat = np.vstack([v.reshape(1, -1) for v in vecs])
+    scores = mat @ cand_vec.reshape(-1)
+    idx = int(np.argmax(scores))
+    return float(scores[idx]), valid_rows[idx]
 
 
 def _corpus_from_rows(rows: list[dict], model_name: str) -> "np.ndarray | None":

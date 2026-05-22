@@ -157,10 +157,13 @@ class ScriptRepository:
         )
 
     def list_uploaded_scripts(self, limit: int = 500) -> list[dict[str, Any]]:
-        """업로드 성공한 영상의 스크립트 목록 (기간 제한 없음, 중복 컨셉 차단용)."""
+        """업로드 성공한 영상의 스크립트 목록 (기간 제한 없음, 중복 컨셉 차단용).
+
+        반환 필드: id, full_text, title, embedding, youtube_video_id
+        """
         return self.db.fetchall(
             """
-            SELECT s.id, s.full_text, s.title, s.embedding
+            SELECT s.id, s.full_text, s.title, s.embedding, u.youtube_video_id
               FROM scripts s
               JOIN videos v ON v.script_id = s.id
               JOIN uploads u ON u.video_id = v.id

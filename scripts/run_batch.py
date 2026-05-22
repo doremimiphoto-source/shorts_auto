@@ -40,9 +40,10 @@ from src.pipeline.subtitle_stage import run as run_subtitle
 from src.pipeline.tts_stage import run as run_tts
 from src.pipeline.upload_stage import run as run_upload
 from src.repository import Repositories
+from src.utils.concept_log import append_concept, print_recent_concepts
 from src.utils.logging import get_logger, setup_logging
 
-_SIMILARITY_KEYWORDS = ("유사도", "similarity", "motif", "30일")
+_SIMILARITY_KEYWORDS = ("유사도", "similarity", "motif", "30일", "컨셉 중복")
 
 
 def _is_similarity_error(e: Exception) -> bool:
@@ -78,6 +79,10 @@ def main() -> None:
 
     target = args.count if args.count > 0 else int(settings.section("pipeline").get("daily_target_count", 3))
     notifier = DiscordNotifier(webhook_url=settings.secrets.discord_webhook_url)
+
+    # ── 컨셉 중복 사전 점검 표시 ────────────────────────────────
+    concept_log_path = settings.project_path("data/concept_log.jsonl")
+    print_recent_concepts(concept_log_path, limit=15)
 
     # ── 배치 시작 알림 ──────────────────────────────────────────
     notifier.send(
@@ -154,6 +159,19 @@ def main() -> None:
                 "duration": duration,
                 "yt_url": yt_url,
             })
+
+            # 컨셉 로그 기록
+            script_rec = repos.scripts.get(script_id)
+            append_concept(
+                concept_log_path,
+                video_id=video_id,
+                script_id=script_id,
+                title=title,
+                hook_pattern=hook_pattern,
+                hook_preview=(script_rec or {}).get("hook", "")[:80],
+                yt_url=yt_url,
+                sim_uploaded=(script_rec or {}).get("similarity_uploaded"),
+            )
 
             # 영상별 완료 Discord 알림
             notifier.send(
