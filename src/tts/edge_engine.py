@@ -15,7 +15,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .base import SynthResult, TTSEngine
+from .base import SynthResult, TTSEngine, _concat_audio_with_gaps
 
 # 실제 제공 한국어 음성: SunHiNeural(여), InJoonNeural(남), HyunsuMultilingualNeural(남)
 # 공부 팁 채널: 여자 중학생 수준의 밝고 자연스러운 톤 — SunHiNeural 단독 사용
@@ -117,6 +117,82 @@ class EdgeEngine(TTSEngine):
             speaker_id=voice,
             engine=self.name,
             metadata={"voice": voice, "rate": rate},
+        )
+
+    def synthesize_segmented(
+        self,
+        *,
+        segments: list[tuple[str, str]],
+        out_path: Path,
+        speaker_id: str | None = None,
+        gaps: tuple[float, ...] = (0.35, 0.50),
+    ) -> SynthResult:
+        """MP3 출력 엔진(edge_tts) 전용: 세그먼트별 합성 후 묵음 갭 삽입 연결."""
+        try:
+            import edge_tts
+        except ImportError as e:
+            raise RuntimeError("edge-tts 미설치") from e
+
+        voice = speaker_id if (speaker_id and speaker_id in self.voices) else self.voices[0]
+        rate = _VOICE_RATE.get(voice, "-10%")
+        pitch = _VOICE_PITCH.get(voice, "+0Hz")
+        gaps_list = list(gaps)
+        temp_mp3s = []
+        durations = []
+
+        for i, (name, text) in enumerate(segments):
+            seg_mp3 = out_path.with_stem(f"_seg{i}_{out_path.stem}").with_suffix(".mp3")
+
+            async def _save(t=text, p=seg_mp3):
+                communicate = edge_tts.Communicate(t, voice, rate=rate, pitch=pitch)
+                await communicate.save(str(p))
+
+            last_exc = None
+            for attempt in range(_MAX_RETRIES):
+                try:
+                    asyncio.run(_save())
+                    last_exc = None
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < _MAX_RETRIES - 1:
+                        time.sleep(_RETRY_BASE_WAIT * (attempt + 1))
+            if last_exc is not None:
+                self._fail_count += 1
+                raise RuntimeError(f"Edge TTS 세그먼트 합성 실패 ({name}): {last_exc}")
+
+            dur = _probe_duration(seg_mp3)
+            temp_mp3s.append(seg_mp3)
+            durations.append(dur)
+
+        # Compute exact times
+        t = 0.0
+        segment_times = {}
+        for i, (name, _) in enumerate(segments):
+            segment_times[name] = {"start": round(t, 3), "end": round(t + durations[i], 3)}
+            t += durations[i]
+            if i < len(segments) - 1 and i < len(gaps_list):
+                t += gaps_list[i]
+
+        # Concatenate MP3s with silence gaps
+        combined_raw = out_path.with_stem(out_path.stem + "_raw").with_suffix(".mp3")
+        _concat_audio_with_gaps(temp_mp3s, gaps_list[:len(segments) - 1], combined_raw)
+
+        for f in temp_mp3s:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+        self._fail_count = 0
+        total_dur = _probe_duration(combined_raw)
+        return SynthResult(
+            audio_path=combined_raw,
+            duration_seconds=total_dur,
+            sample_rate=24000,
+            speaker_id=voice,
+            engine=self.name,
+            metadata={"voice": voice, "rate": rate, "segment_times": segment_times},
         )
 
 

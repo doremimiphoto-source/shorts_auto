@@ -12,8 +12,19 @@ keyword_mode=False: faster-whisper 전문 자막 (레거시).
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
+
+
+def _resolve_ffmpeg() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    winget = Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe"
+    if winget.exists():
+        return str(winget)
+    return "ffmpeg"
 
 from ..subtitle.whisper_engine import WhisperSubtitleEngine, make_styled_subtitles
 from .context import PipelineContext, StageError, stage_timer
@@ -55,7 +66,7 @@ def _rewrap(text: str, cpl: int = 19) -> str:
 def _detect_silences(audio: Path) -> list[tuple[float, float]]:
     """FFmpeg silencedetect로 무음 구간 반환."""
     r = subprocess.run(
-        ["ffmpeg", "-i", str(audio),
+        [_resolve_ffmpeg(), "-i", str(audio),
          "-af", "silencedetect=noise=-35dB:d=0.15",
          "-f", "null", "-"],
         capture_output=True, text=True, timeout=30, check=False,
@@ -216,6 +227,99 @@ def _enhance_subtitle_timing(
     path.write_text("\n".join(out), "utf-8")
 
 
+def _apply_segment_timing(
+    path: Path,
+    segment_times: dict[str, dict[str, float]],
+    silences: list[tuple[float, float]],
+) -> None:
+    """세그먼트 타이밍 사이드카가 있을 때 정확한 구간으로 ASS 타임라인 덮어쓰기.
+
+    body는 내부 silence를 찾아 body_part1/body_part2로 분리.
+    """
+    raw = path.read_text("utf-8").splitlines()
+    header: list[str] = []
+    dlgs: list[dict] = []
+    in_events = False
+
+    for ln in raw:
+        if ln.strip() == "[Events]":
+            in_events = True
+            header.append(ln)
+            continue
+        if not in_events or not ln.startswith("Dialogue:"):
+            header.append(ln)
+            continue
+        f = ln.split(",", 9)
+        if len(f) < 10:
+            header.append(ln)
+            continue
+        layer = f[0].split(":")[-1].strip()
+        t0, t1 = _parse_ts(f[1]), _parse_ts(f[2])
+        om = re.match(r"^(\{[^}]*\})", f[9])
+        ovr = om.group(1) if om else ""
+        body_text = f[9][len(ovr):]
+        dlgs.append({"layer": layer, "t0": t0, "t1": t1,
+                     "hd": f[:9], "ovr": ovr, "body": body_text})
+
+    non_title = [d for d in dlgs if d["layer"] != "1"]
+    # segment order inferred from position: hook(1), body_pt1(1+), body_pt2(opt), twist(last)
+    # count body segments = total non_title - (1 if hook in times) - (1 if twist in times)
+    n_hook  = 1 if "hook"  in segment_times else 0
+    n_twist = 1 if "twist" in segment_times else 0
+    n_body  = max(0, len(non_title) - n_hook - n_twist)
+
+    seg_names: list[str] = []
+    if n_hook:  seg_names.append("hook")
+    for _ in range(n_body): seg_names.append("body")
+    if n_twist: seg_names.append("twist")
+
+    body_idx = 0  # which body sub-segment we're on
+
+    for i, dlg in enumerate(non_title):
+        if i >= len(seg_names):
+            break
+        seg = seg_names[i]
+        times = segment_times.get(seg, {})
+        if not times:
+            continue
+
+        if seg == "body":
+            body_start = times["start"]
+            body_end   = times["end"]
+            if n_body == 1:
+                dlg["t0"] = body_start
+                dlg["t1"] = body_end
+            else:
+                # Split body by finding a silence within body range
+                body_sils = [(ss, se) for ss, se in silences
+                             if body_start < ss < body_end - 0.1]
+                if body_sils and n_body == 2:
+                    mid_sil = min(body_sils, key=lambda s: abs(s[0] - (body_start + body_end) / 2))
+                    if body_idx == 0:
+                        dlg["t0"] = body_start
+                        dlg["t1"] = round(mid_sil[0], 3)
+                    else:
+                        dlg["t0"] = round(mid_sil[1], 3)
+                        dlg["t1"] = body_end
+                else:
+                    # fallback: split evenly
+                    step = (body_end - body_start) / n_body
+                    dlg["t0"] = round(body_start + body_idx * step, 3)
+                    dlg["t1"] = round(body_start + (body_idx + 1) * step - 0.1, 3)
+            body_idx += 1
+        else:
+            dlg["t0"] = round(times["start"], 3)
+            dlg["t1"] = round(times["end"],   3)
+
+    out = header[:]
+    for dlg in dlgs:
+        row = dlg["hd"][:]
+        row[1] = _ass_ts(dlg["t0"])
+        row[2] = _ass_ts(dlg["t1"])
+        out.append(",".join(row) + "," + dlg["ovr"] + dlg["body"])
+    path.write_text("\n".join(out), "utf-8")
+
+
 def run(ctx: PipelineContext, *, video_id: int) -> Path:
     """자막 생성. SRT 경로 반환."""
     with stage_timer(ctx, "subtitle") as state:
@@ -245,10 +349,25 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
             )
             out_srt = out_ass
 
-            # 자막 싱크 후처리: 분리 → silencedetect 스냅 → 강조 공백
+            # 세그먼트 타이밍 사이드카 확인
+            import json
+            times_path = audio_path.parent / (audio_path.stem + "_times.json")
+            segment_times: dict = {}
+            if times_path.exists():
+                try:
+                    segment_times = json.loads(times_path.read_text("utf-8"))
+                except Exception:
+                    pass
+
             try:
                 silences = _detect_silences(audio_path)
-                if silences:
+                if segment_times:
+                    # 정확한 세그먼트 타이밍 적용
+                    _apply_segment_timing(out_ass, segment_times, silences)
+                    ctx.log.info("subtitle_segment_timing",
+                                 segments=list(segment_times.keys()), path=out_ass.name)
+                elif silences:
+                    # 폴백: silence 기반 스냅
                     _fix_subtitle_splits(out_ass)
                     _enhance_subtitle_timing(out_ass, silences)
                     ctx.log.info("subtitle_enhanced",

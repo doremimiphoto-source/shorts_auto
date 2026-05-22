@@ -12,6 +12,16 @@ import shutil
 import subprocess
 from pathlib import Path
 
+
+def _resolve_ffmpeg() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    winget = Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe"
+    if winget.exists():
+        return str(winget)
+    return "ffmpeg"
+
 from ..tts.base import TTSEngine
 from ..tts.edge_engine import EdgeEngine
 from ..tts.melo_engine import MeloEngine, MeloVoice
@@ -52,11 +62,24 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
         wav_path = audio_dir / f"script_{script_id}_{speaker_id}.wav"
         mp3_path = audio_dir / f"script_{script_id}_{speaker_id}.mp3"
 
-        synth = engine.synthesize(
-            text=_sanitize_for_ko_tts(script["full_text"]),
-            out_path=wav_path,
-            speaker_id=speaker_id,
-        )
+        hook_text  = _sanitize_for_ko_tts(script.get("hook")  or "")
+        body_text  = _sanitize_for_ko_tts(script.get("body")  or "")
+        twist_text = _sanitize_for_ko_tts(script.get("twist") or "")
+        raw_segs = [("hook", hook_text), ("body", body_text), ("twist", twist_text)]
+        segments = [(n, t) for n, t in raw_segs if t.strip()]
+
+        if len(segments) >= 2:
+            synth = engine.synthesize_segmented(
+                segments=segments,
+                out_path=wav_path,
+                speaker_id=speaker_id,
+            )
+        else:
+            synth = engine.synthesize(
+                text=_sanitize_for_ko_tts(script["full_text"]),
+                out_path=wav_path,
+                speaker_id=speaker_id,
+            )
         ctx.log.info("tts_synth_ok",
                      engine=engine.name,
                      duration_seconds=round(synth.duration_seconds, 2),
@@ -74,7 +97,15 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
             output_path=mp3_path,
             target_lufs=target_lufs,
             sample_rate=sample_rate,
+            ffmpeg_bin=_resolve_ffmpeg(),
         )
+
+        # 세그먼트 타이밍 사이드카 저장
+        segment_times = synth.metadata.get("segment_times", {})
+        if segment_times:
+            import json
+            times_path = mp3_path.parent / (mp3_path.stem + "_times.json")
+            times_path.write_text(json.dumps(segment_times, ensure_ascii=False), "utf-8")
         # 길이 검증 (FR-3.5)
         duration = synth.duration_seconds
         if not (target_min <= duration <= target_max):

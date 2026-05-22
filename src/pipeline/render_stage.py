@@ -8,8 +8,19 @@
 from __future__ import annotations
 
 import random
+import shutil
 import subprocess
 from pathlib import Path
+
+
+def _resolve_ffmpeg() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    winget = Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe"
+    if winget.exists():
+        return str(winget)
+    return "ffmpeg"
 
 from ..renderer.assets import AssetSelector
 from ..renderer.composer import RenderConfig, RenderInput, VideoComposer, extract_pastel_bar_color
@@ -79,7 +90,7 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
             speed_jitter=float(renderer_cfg.get("background", {}).get("randomize", {}).get("speed_jitter", 0.05)),
             fonts_dir=fonts_dir,
         )
-        composer = VideoComposer(config=cfg)
+        composer = VideoComposer(config=cfg, ffmpeg_bin=_resolve_ffmpeg())
 
         out_dir = ctx.project_root / renderer_cfg.get("output", {}).get("final_dir", "output/final")
         out_dir.mkdir(parents=True, exist_ok=True)
