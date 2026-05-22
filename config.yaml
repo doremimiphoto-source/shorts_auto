@@ -117,6 +117,7 @@ rewriter:
     recent_30d_max: 0.90               # 과거 30일 대비; 학습팁 도메인 + 데모 스크립트 혼재로 max 유사도 0.86~0.89 실측 → 0.90으로 상향
     lucky_charm_30d_max: 0.93          # lucky_charm 전용 30일 임계값 — 같은 "전설" 포맷 반복이라 구조적으로 유사도 높음 (0.88→0.93)
     cumulative_sample_max: 0.55        # 누적 샘플 100건 평균 (30편+ 규모부터 실질 작동)
+    uploaded_max: 0.85                 # 업로드 성공 영상 전체 대비 cosine_max — 동일 컨셉 재생산 차단 (기간 제한 없음)
     embedding_model: jhgan/ko-sroberta-multitask
 
   hook_patterns:                       # 후킹 다양성 (FR-2.7)

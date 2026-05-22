@@ -103,11 +103,16 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         cum_sample = ctx.repos.scripts.sample_cumulative(limit=100)
         corpus_cum = _corpus_from_rows(cum_sample, embedding_model)
         sim_cum = float(cosine_mean(cand_vec, corpus_cum)) if corpus_cum is not None else 0.0
+        # ④ 업로드 성공 영상 전체 대비 (기간 제한 없음 — 컨셉 중복 차단)
+        uploaded = ctx.repos.scripts.list_uploaded_scripts(limit=500)
+        corpus_uploaded = _corpus_from_rows(uploaded, embedding_model)
+        sim_uploaded = float(cosine_max(cand_vec, corpus_uploaded)) if corpus_uploaded is not None else 0.0
 
         ctx.log.info("similarity_checks",
                      sim_motif=round(sim_motif, 4),
                      sim_30d=round(sim_30d, 4),
-                     sim_cum=round(sim_cum, 4))
+                     sim_cum=round(sim_cum, 4),
+                     sim_uploaded=round(sim_uploaded, 4))
 
         # lucky_charm은 구조적으로 같은 전설을 반복하므로 30일 임계값 완화
         hook_used = result.hook_pattern_used or hook_pattern
@@ -129,6 +134,9 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         if sim_cum >= float(sim_cfg.get("cumulative_sample_max", 0.55)):
             _block_source(f"누적 평균 유사도 초과: {sim_cum:.3f}")
             raise StageSkipped(f"누적 평균 유사도 초과: {sim_cum:.3f}")
+        if sim_uploaded >= float(sim_cfg.get("uploaded_max", 0.85)):
+            _block_source(f"업로드 영상 컨셉 중복: {sim_uploaded:.3f}")
+            raise StageSkipped(f"업로드 영상 컨셉 중복: {sim_uploaded:.3f}")
 
         # 6. DB 저장
         script_id = ctx.repos.scripts.insert(
@@ -143,6 +151,7 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
             similarity_motif=sim_motif,
             similarity_30d=sim_30d,
             similarity_cum=sim_cum,
+            similarity_uploaded=sim_uploaded,
             model_used=result.model_used,
             model_version=result.model_version,
             embedding=serialize(cand_vec),

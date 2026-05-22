@@ -110,6 +110,7 @@ class ScriptRepository:
         similarity_motif: float | None = None,
         similarity_30d: float | None = None,
         similarity_cum: float | None = None,
+        similarity_uploaded: float | None = None,
         model_used: str = "",
         model_version: str = "",
         embedding: bytes | None = None,
@@ -119,14 +120,14 @@ class ScriptRepository:
             """
             INSERT INTO scripts
               (source_id, hook, body, twist, full_text, title, hashtags_json,
-               hook_pattern, similarity_motif, similarity_30d, similarity_cum,
+               hook_pattern, similarity_motif, similarity_30d, similarity_cum, similarity_uploaded,
                model_used, model_version, embedding, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source_id, hook, body, twist, full_text, title,
                 json.dumps(hashtags or [], ensure_ascii=False),
-                hook_pattern, similarity_motif, similarity_30d, similarity_cum,
+                hook_pattern, similarity_motif, similarity_30d, similarity_cum, similarity_uploaded,
                 model_used, model_version, embedding, status,
             ),
         )
@@ -152,6 +153,21 @@ class ScriptRepository:
     def sample_cumulative(self, limit: int = 100) -> list[dict[str, Any]]:
         return self.db.fetchall(
             "SELECT * FROM scripts ORDER BY RANDOM() LIMIT ?",
+            (limit,),
+        )
+
+    def list_uploaded_scripts(self, limit: int = 500) -> list[dict[str, Any]]:
+        """업로드 성공한 영상의 스크립트 목록 (기간 제한 없음, 중복 컨셉 차단용)."""
+        return self.db.fetchall(
+            """
+            SELECT s.id, s.full_text, s.title, s.embedding
+              FROM scripts s
+              JOIN videos v ON v.script_id = s.id
+              JOIN uploads u ON u.video_id = v.id
+             WHERE u.status = 'success'
+             ORDER BY u.uploaded_at DESC
+             LIMIT ?
+            """,
             (limit,),
         )
 

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS scripts (
     similarity_motif    REAL,                              -- 모티프 대비 (FR-2.6 ①)
     similarity_30d      REAL,                              -- 30일 대비 (FR-2.6 ②)
     similarity_cum      REAL,                              -- 누적 샘플 (FR-2.6 ③)
+    similarity_uploaded REAL,                              -- 전체 업로드 영상 대비 (FR-2.6 ④)
     model_used          TEXT,                              -- 'gemini' | 'groq' | 'ollama'
     model_version       TEXT,
     embedding           BLOB,                              -- 후속 유사도 검사용 캐시
