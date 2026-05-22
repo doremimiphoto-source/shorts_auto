@@ -375,6 +375,7 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
             except Exception as e:
                 ctx.log.warning("subtitle_enhance_failed", error=repr(e))
         else:
+            out_srt = out_dir / f"video_{video_id}.srt"
             whisper_cfg = sub_cfg.get("whisper", {})
             engine = WhisperSubtitleEngine(
                 model_size=whisper_cfg.get("model_size", "small"),
