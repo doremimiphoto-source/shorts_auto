@@ -131,7 +131,13 @@ def _enhance_subtitle_timing(
     emphasis_pause: float = 0.38,
     conclusion_pause: float = 0.65,
 ) -> None:
-    """실제 발화 경계로 자막 타이밍 스냅 + 강조 전 시각 공백 (in-place)."""
+    """실제 발화 경계로 자막 타이밍 스냅 + 강조 전 시각 공백 (in-place).
+
+    ① t0 스냅: 각 세그먼트 시작 → 가장 가까운 silence_end (발화 재개점)
+    ② t0 순서 강제: 스냅 후 역전·겹침 방지 (이전 t0 + 0.5s 이상)
+    ③ t1 스냅: 현재 t0+0.3s 이후이고 **다음 t0 이전**인 silence_start만 사용
+    ④ 강조 구절 직전 시각 공백
+    """
     s_ends   = [se for _, se in silences]
     s_starts = [ss for ss, _ in silences]
 
@@ -160,22 +166,36 @@ def _enhance_subtitle_timing(
         dlgs.append({"layer": layer, "t0": t0, "t1": t1,
                      "hd": f[:9], "ovr": ovr, "body": body})
 
-    # ① 발화 경계 스냅 (window ±2.0s, Title 제외)
-    for dlg in dlgs:
-        if dlg["layer"] == "1":
-            continue
+    non_title = [d for d in dlgs if d["layer"] != "1"]
+
+    # ① t0 스냅: silence_end(발화 재개) 중 ±2.0s 이내 가장 가까운 것으로
+    for dlg in non_title:
         if s_ends:
             snapped = _nearest(dlg["t0"], s_ends, 2.0)
             if snapped is not None:
                 dlg["t0"] = snapped
-        if s_starts:
-            candidates = [(abs(ss - dlg["t1"]), ss)
-                          for ss in s_starts if ss > dlg["t0"] + 0.3]
-            if candidates:
-                dlg["t1"] = max(min(candidates)[1], dlg["t0"] + 0.4)
 
-    # ② 강조 구절 직전 시각 공백
-    non_title = [d for d in dlgs if d["layer"] != "1"]
+    # ② t0 순서 강제: 스냅 결과 역전되면 이전 t0 + 0.5s로 밀어내기
+    for i in range(1, len(non_title)):
+        min_t0 = non_title[i - 1]["t0"] + 0.5
+        if non_title[i]["t0"] < min_t0:
+            non_title[i]["t0"] = min_t0
+
+    # ③ t1 스냅: silence_start 중 (t0+0.3s, next_t0) 범위 내 것만 사용
+    #    다음 t0 이후 silence_start는 절대 사용 안 해 겹침을 원천 차단
+    for i, dlg in enumerate(non_title):
+        next_t0 = non_title[i + 1]["t0"] if i + 1 < len(non_title) else float("inf")
+        cands = [(abs(ss - dlg["t1"]), ss)
+                 for ss in s_starts
+                 if dlg["t0"] + 0.3 < ss < next_t0 - 0.05]
+        if cands:
+            dlg["t1"] = min(cands)[1]
+        else:
+            # 범위 내 silence 없으면 다음 t0 - 0.15s 로 끊기
+            cap = (next_t0 - 0.15) if next_t0 < float("inf") else dlg["t1"]
+            dlg["t1"] = max(cap, dlg["t0"] + 0.4)
+
+    # ④ 강조 구절 직전 시각 공백
     for i, dlg in enumerate(non_title):
         if not _EMPH_RE.match(dlg["body"]) or i == 0:
             continue
@@ -186,7 +206,7 @@ def _enhance_subtitle_timing(
             if new_t1 > prev["t0"] + 0.3:
                 prev["t1"] = new_t1
 
-    # ③ 출력
+    # ⑤ 출력
     out = header[:]
     for dlg in dlgs:
         row = dlg["hd"][:]
