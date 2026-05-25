@@ -19,8 +19,17 @@ class OllamaRewriter(Rewriter):
         self._client = None
 
     def is_available(self) -> bool:
-        # 실제 서버 살아있는지는 호출 시점에 검증
-        return bool(self.model)
+        """Ollama 서버가 살아있고, 지정 모델이 다운로드되어 있을 때만 True."""
+        try:
+            import urllib.request
+            import json as _json
+            with urllib.request.urlopen(f"{self.base_url}/api/tags", timeout=2) as r:
+                data = _json.loads(r.read())
+            names = [m.get("name", "") for m in data.get("models", [])]
+            base = self.model.split(":")[0]
+            return any(n == self.model or n.startswith(base + ":") for n in names)
+        except Exception:
+            return False
 
     def _ensure_client(self) -> None:
         if self._client is not None:

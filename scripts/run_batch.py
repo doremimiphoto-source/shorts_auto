@@ -11,11 +11,12 @@ crawl → rewrite → tts → subtitle → render → upload 전 단계 실행.
 from __future__ import annotations
 
 import argparse
+import atexit
+import os
 import sys
+import time
 import uuid
 from pathlib import Path
-
-import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -27,6 +28,26 @@ else:
     sys.stdout.reconfigure(encoding="utf-8")
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
+def _acquire_batch_lock(lock_path: Path, max_age_seconds: int = 3600) -> bool:
+    """중복 배치 실행 방지 락 획득. True=정상 실행 가능, False=이미 실행 중."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    if lock_path.exists():
+        age = time.time() - lock_path.stat().st_mtime
+        if age < max_age_seconds:
+            try:
+                old_pid = int(lock_path.read_text().strip())
+                # Windows: 프로세스 생존 여부 확인 (signal 0)
+                os.kill(old_pid, 0)
+                return False  # 이전 배치 아직 실행 중
+            except (OSError, ValueError):
+                pass  # 프로세스 없음 → 락 파일 낡음
+        lock_path.unlink(missing_ok=True)
+
+    lock_path.write_text(str(os.getpid()))
+    atexit.register(lambda: lock_path.unlink(missing_ok=True))
+    return True
 
 from src.config import get_settings
 from src.db import open_database
@@ -56,6 +77,13 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
+
+    # 중복 배치 실행 방지
+    lock_path = settings.project_path(settings.section("pipeline").get("lock_file", "data/pipeline.lock"))
+    if not _acquire_batch_lock(lock_path):
+        print(f"[BATCH] 이미 실행 중인 배치가 있습니다 (lock={lock_path}). 종료합니다.")
+        sys.exit(0)
+
     setup_logging(
         log_dir=settings.section("observability").get("log_dir", "logs"),
         level=settings.secrets.log_level,
