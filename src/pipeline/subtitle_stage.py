@@ -12,20 +12,10 @@ keyword_mode=False: faster-whisper 전문 자막 (레거시).
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
-
-def _resolve_ffmpeg() -> str:
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-    winget = Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe"
-    if winget.exists():
-        return str(winget)
-    return "ffmpeg"
-
+from ..utils.ffmpeg_path import resolve_ffmpeg as _resolve_ffmpeg
 from ..subtitle.whisper_engine import WhisperSubtitleEngine, make_styled_subtitles
 from .context import PipelineContext, StageError, stage_timer
 

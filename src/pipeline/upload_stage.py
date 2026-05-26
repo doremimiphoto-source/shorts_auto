@@ -140,21 +140,6 @@ def run(ctx: PipelineContext, *, video_id: int) -> int:
         ctx.repos.uploads.update_status(upload_id, status="success")
         ctx.repos.api_usage.record(api_name="youtube", units_used=result.quota_units_used, succeeded=True)
 
-        # 썸네일 YouTube 등록 (실패해도 업로드 결과에 영향 없음)
-        thumb_path_str = video.get("thumbnail_path")
-        if thumb_path_str:
-            thumb_path = Path(thumb_path_str)
-            if thumb_path.exists() and thumb_path.stat().st_size < 2 * 1024 * 1024:
-                ok = uploader.upload_thumbnail(
-                    youtube_video_id=result.youtube_video_id,
-                    thumbnail_path=thumb_path,
-                )
-                if ok:
-                    ctx.log.info("thumbnail_set", youtube_id=result.youtube_video_id)
-                    ctx.repos.api_usage.record(api_name="youtube", units_used=50, succeeded=True)
-                else:
-                    ctx.log.warning("thumbnail_set_failed", youtube_id=result.youtube_video_id)
-
         state["message"] = f"upload_id={upload_id}, youtube={result.youtube_video_id}"
         return upload_id
 

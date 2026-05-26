@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
-def _resolve_ffmpeg() -> str:
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-    winget = Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe"
-    if winget.exists():
-        return str(winget)
-    return "ffmpeg"
+from ..utils.ffmpeg_path import resolve_ffmpeg as _resolve_ffmpeg
 
 
 @dataclass

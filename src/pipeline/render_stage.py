@@ -8,20 +8,10 @@
 from __future__ import annotations
 
 import random
-import shutil
 import subprocess
 from pathlib import Path
 
-
-def _resolve_ffmpeg() -> str:
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-    winget = Path.home() / "AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe"
-    if winget.exists():
-        return str(winget)
-    return "ffmpeg"
-
+from ..utils.ffmpeg_path import resolve_ffmpeg as _resolve_ffmpeg
 from ..renderer.assets import AssetSelector
 from ..renderer.composer import RenderConfig, RenderInput, VideoComposer, extract_pastel_bar_color
 from .context import PipelineContext, StageError, StageSkipped, stage_timer
@@ -183,43 +173,9 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
         au.record(asset_kind="bg_video", asset_path=str(bg_video), video_id=video_id)
         au.record(asset_kind="bgm", asset_path=str(bgm), video_id=video_id)
 
-        # 썸네일 생성 (실패해도 렌더 결과에 영향 없음)
-        thumb_path = _generate_thumbnail(ctx, video_id, script, bg_video, fonts_dir, out_dir)
-        if thumb_path:
-            # 기존 DB에 thumbnail_path 컬럼이 없으면 자동 추가 (마이그레이션)
-            try:
-                ctx.repos.db.execute("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT")
-            except Exception:
-                pass
-            ctx.repos.db.execute(
-                "UPDATE videos SET thumbnail_path = ? WHERE id = ?",
-                (str(thumb_path), video_id),
-            )
-            ctx.log.info("thumbnail_generated", path=thumb_path.name)
-
         state["message"] = f"final={final.name}, bg={bg_video.name}, bgm={bgm.name}"
         return final
 
-
-def _generate_thumbnail(ctx, video_id: int, script: dict | None,
-                        bg_video: Path, fonts_dir: Path, out_dir: Path) -> Path | None:
-    """썸네일 생성. 성공 시 Path, 실패 시 None."""
-    if script is None:
-        return None
-    try:
-        from ..renderer.thumbnail import ThumbnailInput, generate as gen_thumb
-        inp = ThumbnailInput(
-            title=script.get("title", ""),
-            hook=script.get("hook", ""),
-            twist=script.get("twist", ""),
-            hook_pattern=script.get("hook_pattern", ""),
-        )
-        thumb_dir = out_dir.parent / "thumbnails"
-        thumb_path = thumb_dir / f"thumb_{video_id}.jpg"
-        return gen_thumb(inp, thumb_path, fonts_dir, bg_video=bg_video)
-    except Exception as e:
-        ctx.log.warning("thumbnail_gen_failed", error=repr(e))
-        return None
 
 
 def _try_ai_bg(script: dict | None, cache_dir: Path, ctx) -> Path | None:
