@@ -39,6 +39,16 @@ def run(ctx: PipelineContext, *, video_id: int) -> int:
         oauth_client = oauth_clients[0]
         oauth_name = oauth_client.get("name", "default")
 
+        # 일일 업로드 상한 가드 — 스케줄 배치 수(4회)와 일치, 버스트 방지
+        pipeline_cfg = ctx.section("pipeline")
+        daily_target = int(pipeline_cfg.get("daily_target_count", 4))
+        uploaded_today = ctx.repos.uploads.count_uploaded_today(oauth_client_name=oauth_name)
+        if uploaded_today >= daily_target:
+            raise StageSkipped(
+                f"일일 업로드 상한 도달: {uploaded_today}/{daily_target}개 — "
+                f"영상은 렌더까지 완료, 내일 quota 리셋 후 배치에서 자동 업로드"
+            )
+
         # Quota 가드 (FR-6.7)
         used = ctx.repos.uploads.quota_used_today(oauth_client_name=oauth_name)
         cost = int(api_cfg.get("upload_cost_units", 1600))

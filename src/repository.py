@@ -264,6 +264,20 @@ class UploadRepository:
         )
         return int(cur.lastrowid or 0)
 
+    def count_uploaded_today(self, oauth_client_name: str = "default") -> int:
+        """오늘 KST 기준 성공 업로드 건수."""
+        row = self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt
+              FROM uploads
+             WHERE oauth_client_name = ?
+               AND status = 'success'
+               AND DATE(uploaded_at, '+9 hours') = DATE('now', '+9 hours')
+            """,
+            (oauth_client_name,),
+        )
+        return int(row["cnt"]) if row else 0
+
     def quota_used_today(self, oauth_client_name: str = "default") -> int:
         row = self.db.fetchone(
             """

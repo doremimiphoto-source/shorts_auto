@@ -105,7 +105,16 @@ def main() -> None:
         project_root=PROJECT_ROOT,
     )
 
-    target = args.count if args.count > 0 else int(settings.section("pipeline").get("daily_target_count", 3))
+    target = args.count if args.count > 0 else int(settings.section("pipeline").get("daily_target_count", 4))
+    daily_cap = int(settings.section("pipeline").get("daily_target_count", 4))
+
+    # 일일 업로드 상한 조기 점검 — 이미 상한 도달 시 파이프라인 전체 실행 방지
+    uploaded_today = repos.uploads.count_uploaded_today()
+    if uploaded_today >= daily_cap:
+        print(f"[BATCH] 오늘 업로드 상한 도달 ({uploaded_today}/{daily_cap}개). 배치를 건너뜁니다.")
+        db.close()
+        sys.exit(0)
+
     notifier = DiscordNotifier(webhook_url=settings.secrets.discord_webhook_url)
 
     # ── 컨셉 중복 사전 점검 표시 ────────────────────────────────

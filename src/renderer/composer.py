@@ -191,13 +191,23 @@ class VideoComposer:
         r, g, b = bar_rgb
         bar_hex = f"0x{r:02x}{g:02x}{b:02x}"
 
-        # ① BG 영상 → 크롭 → Ken Burns(110%) → 색보정
+        # ① BG 영상 → 크롭 → Ken Burns(110%) → 임팩트 플래시(첫 0.3초) → 색보정
+        # Impact Flash: t=0에 밝기+대비 서지 → 0.3초 내 자연 감쇠 (지수 감쇠)
+        # · eq 필터는 per-frame t 지원 → 안전하고 빠름 (geometry 변경 없음)
+        # · Ken Burns가 이미 110% 줌+패닝 중이므로 별도 zoom 기하 처리 불필요
+        impact_flash = (
+            "eq="
+            "brightness='0.18*exp(-12*t)':"
+            "contrast='1+0.12*exp(-12*t)'"
+        )
+
         bg_chain = (
             f"[0:v]setpts={1.0/speed:.4f}*PTS,"
             f"scale='if(gt(a,{w}/{vid_h}),-2,{w})':'if(gt(a,{w}/{vid_h}),{vid_h},-2)',"
             f"crop={w}:{vid_h}:(iw-{w})/2:{crop_y_expr},"
             f"scale={kb_w}:{kb_h}:flags=lanczos,"
             f"crop={w}:{vid_h}:x='{kb_cx}':y={kb_cy},"
+            f"{impact_flash},"
             f"{eq_filter}[bg_crop]"
         )
 

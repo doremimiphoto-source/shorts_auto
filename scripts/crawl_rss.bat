@@ -4,14 +4,11 @@ setlocal
 set "USERPROFILE_DIR=C:\Users\DKSYSTEMS"
 set "FFMPEG_WINGET=%USERPROFILE_DIR%\AppData\Local\Microsoft\WinGet\Links"
 set "FFMPEG_PROG=C:\Program Files\ffmpeg\bin"
-set "FFMPEG_PROG86=C:\Program Files (x86)\ffmpeg\bin"
 
 if exist "%FFMPEG_WINGET%\ffmpeg.exe" (
     set "PATH=%FFMPEG_WINGET%;%PATH%"
 ) else if exist "%FFMPEG_PROG%\ffmpeg.exe" (
     set "PATH=%FFMPEG_PROG%;%PATH%"
-) else if exist "%FFMPEG_PROG86%\ffmpeg.exe" (
-    set "PATH=%FFMPEG_PROG86%;%PATH%"
 )
 
 set "PYTHON_EXE=D:\Application\Claude\shorts_auto\.venv\Scripts\python.exe"
@@ -24,6 +21,6 @@ set "SENTENCE_TRANSFORMERS_HOME=%USERPROFILE_DIR%\.cache\torch\sentence_transfor
 cd /d "D:\Application\Claude\shorts_auto"
 
 set "BAT_LOG=D:\Application\Claude\shorts_auto\logs\batch_stderr.log"
-"%PYTHON_EXE%" -m scripts.run_batch --count 1 2>>"%BAT_LOG%"
+"%PYTHON_EXE%" -m scripts.crawl_rss --limit 10 2>>"%BAT_LOG%"
 
 endlocal

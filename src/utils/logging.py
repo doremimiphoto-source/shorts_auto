@@ -23,6 +23,10 @@ _PII_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # JSON 내 흔한 시크릿 키
     (re.compile(r'("(?:refresh_token|access_token|api_key|client_secret|authorization|password)"\s*:\s*")([^"]+)(")', re.IGNORECASE),
      r"\1***REDACTED***\3"),
+    # Discord webhook URL — 채널 ID + 토큰 마스킹
+    (re.compile(r"(discord\.com/api/webhooks/\d+/)([A-Za-z0-9_\-]+)"), r"\1***WEBHOOK_TOKEN***"),
+    # YouTube client_secret / token JSON 경로 내 토큰값
+    (re.compile(r"(\"token\"\s*:\s*\")([^\"]+)(\")"), r"\1***REDACTED***\3"),
     # 이메일 (외부 PII)
     (re.compile(r"\b([A-Za-z0-9._%+\-]+)@([A-Za-z0-9.\-]+\.[A-Za-z]{2,})\b"),
      r"***EMAIL***@\2"),
@@ -81,6 +85,10 @@ def setup_logging(
 
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    # httpx / httpcore의 HTTP request 로그 억제 — webhook URL 등 민감 URL이 stderr에 노출되는 것 방지
+    for _noisy in ("httpx", "httpcore", "hpack", "urllib3"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
 
     root_logger = logging.getLogger()
     root_logger.handlers.clear()

@@ -90,12 +90,17 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
             ffmpeg_bin=_resolve_ffmpeg(),
         )
 
+        import json
         # 세그먼트 타이밍 사이드카 저장
         segment_times = synth.metadata.get("segment_times", {})
         if segment_times:
-            import json
             times_path = mp3_path.parent / (mp3_path.stem + "_times.json")
             times_path.write_text(json.dumps(segment_times, ensure_ascii=False), "utf-8")
+        # 단어 단위 타임스탬프 사이드카 저장 (subtitle sync 정밀화용)
+        word_boundaries = synth.metadata.get("word_boundaries", [])
+        if word_boundaries:
+            wb_path = mp3_path.parent / (mp3_path.stem + "_words.json")
+            wb_path.write_text(json.dumps(word_boundaries, ensure_ascii=False), "utf-8")
         # 길이 검증 (FR-3.5)
         duration = synth.duration_seconds
         if not (target_min <= duration <= target_max):

@@ -217,6 +217,98 @@ def _enhance_subtitle_timing(
     path.write_text("\n".join(out), "utf-8")
 
 
+def _fine_tune_t0_with_word_boundaries(
+    path: Path,
+    word_boundaries: list[dict],
+    segment_times: dict[str, dict[str, float]],
+) -> None:
+    """WordBoundary로 각 자막 라인의 t0만 정밀화. t1은 절대 수정하지 않는다.
+
+    원칙:
+    · t1 = _apply_segment_timing이 설정한 세그먼트 경계 → 음성보다 일찍 사라지는 현상 원천 차단
+    · t0 = 해당 키워드 단어가 실제 발화되는 시각 (WordBoundary 기반) 으로만 앞당김
+    · t0은 이전 라인의 t1 이후여야 하며, 현재 t1보다 0.3s 이상 앞이어야 함
+    """
+    raw = path.read_text("utf-8").splitlines()
+    header: list[str] = []
+    dlgs: list[dict] = []
+    in_events = False
+
+    for ln in raw:
+        if ln.strip() == "[Events]":
+            in_events = True
+            header.append(ln)
+            continue
+        if not in_events or not ln.startswith("Dialogue:"):
+            header.append(ln)
+            continue
+        f = ln.split(",", 9)
+        if len(f) < 10:
+            header.append(ln)
+            continue
+        layer = f[0].split(":")[-1].strip()
+        t0, t1 = _parse_ts(f[1]), _parse_ts(f[2])
+        om = re.match(r"^(\{[^}]*\})", f[9])
+        ovr = om.group(1) if om else ""
+        body = f[9][len(ovr):]
+        dlgs.append({"layer": layer, "t0": t0, "t1": t1, "hd": f[:9], "ovr": ovr, "body": body})
+
+    non_title = [d for d in dlgs if d["layer"] != "1"]
+    if not non_title:
+        return
+
+    # 세그먼트별 단어 목록 색인 (segment 키 기준)
+    seg_words: dict[str, list[dict]] = {}
+    for wb in word_boundaries:
+        seg = wb.get("segment", "")
+        seg_words.setdefault(seg, []).append(wb)
+
+    prev_t1 = 0.0
+    for dlg in non_title:
+        kw_clean = re.sub(r"\{[^}]*\}|\\N", " ", dlg["body"]).strip()
+        if not kw_clean:
+            prev_t1 = dlg["t1"]
+            continue
+
+        # 이 라인이 속한 세그먼트 판단 (현재 t0/t1 중앙값 기준)
+        mid = (dlg["t0"] + dlg["t1"]) / 2
+        seg_name = None
+        for sn, st in segment_times.items():
+            if st["start"] - 0.3 <= mid <= st["end"] + 0.3:
+                seg_name = sn
+                break
+
+        best_wb = None
+        if seg_name:
+            candidates = seg_words.get(seg_name, [])
+            best_score = -1.0
+            for wb in candidates:
+                wt = wb["text"].strip()
+                # 포함 관계 + 위치 근접도 복합 점수
+                contains = wt in kw_clean or kw_clean in wt
+                proximity = max(0.0, 1.0 - abs(wb["offset_sec"] - dlg["t0"]) / max(dlg["t1"] - dlg["t0"], 1.0))
+                score = (0.6 if contains else 0.0) + 0.4 * proximity
+                if score > best_score:
+                    best_score, best_wb = score, wb
+
+        if best_wb is not None:
+            candidate_t0 = max(prev_t1 + 0.05, best_wb["offset_sec"] - 0.05)
+            # t0은 현재 t1보다 최소 0.3s 앞이어야 함 (최소 표시 시간 보장)
+            if candidate_t0 < dlg["t1"] - 0.3:
+                dlg["t0"] = round(candidate_t0, 3)
+        # t1은 절대 수정하지 않음 — _apply_segment_timing이 설정한 값 유지
+
+        prev_t1 = dlg["t1"]
+
+    out = header[:]
+    for dlg in dlgs:
+        row = dlg["hd"][:]
+        row[1] = _ass_ts(dlg["t0"])
+        row[2] = _ass_ts(dlg["t1"])
+        out.append(",".join(row) + "," + dlg["ovr"] + dlg["body"])
+    path.write_text("\n".join(out), "utf-8")
+
+
 def _apply_segment_timing(
     path: Path,
     segment_times: dict[str, dict[str, float]],
@@ -292,10 +384,10 @@ def _apply_segment_timing(
                         dlg["t0"] = round(mid_sil[1], 3)
                         dlg["t1"] = body_end
                 else:
-                    # fallback: split evenly
+                    # fallback: split evenly (-0.1 제거 — 자막이 오디오보다 일찍 사라지는 현상 방지)
                     step = (body_end - body_start) / n_body
                     dlg["t0"] = round(body_start + body_idx * step, 3)
-                    dlg["t1"] = round(body_start + (body_idx + 1) * step - 0.1, 3)
+                    dlg["t1"] = round(body_start + (body_idx + 1) * step, 3)
             body_idx += 1
         else:
             dlg["t0"] = round(times["start"], 3)
@@ -339,23 +431,36 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
             )
             out_srt = out_ass
 
-            # 세그먼트 타이밍 사이드카 확인
+            # 사이드카 파일 로드
             import json
             times_path = audio_path.parent / (audio_path.stem + "_times.json")
+            words_path = audio_path.parent / (audio_path.stem + "_words.json")
             segment_times: dict = {}
+            word_boundaries: list = []
             if times_path.exists():
                 try:
                     segment_times = json.loads(times_path.read_text("utf-8"))
+                except Exception:
+                    pass
+            if words_path.exists():
+                try:
+                    word_boundaries = json.loads(words_path.read_text("utf-8"))
                 except Exception:
                     pass
 
             try:
                 silences = _detect_silences(audio_path)
                 if segment_times:
-                    # 정확한 세그먼트 타이밍 적용
+                    # 1단계: 세그먼트 경계로 t0/t1 설정 (t1 정확도 우선 — 자막이 오디오보다 일찍 사라지는 현상 방지)
                     _apply_segment_timing(out_ass, segment_times, silences)
-                    ctx.log.info("subtitle_segment_timing",
-                                 segments=list(segment_times.keys()), path=out_ass.name)
+                    if word_boundaries:
+                        # 2단계: t0만 WordBoundary로 정밀화 (t1은 절대 건드리지 않음)
+                        _fine_tune_t0_with_word_boundaries(out_ass, word_boundaries, segment_times)
+                        ctx.log.info("subtitle_word_sync",
+                                     words=len(word_boundaries), path=out_ass.name)
+                    else:
+                        ctx.log.info("subtitle_segment_timing",
+                                     segments=list(segment_times.keys()), path=out_ass.name)
                 elif silences:
                     # 폴백: silence 기반 스냅
                     _fix_subtitle_splits(out_ass)

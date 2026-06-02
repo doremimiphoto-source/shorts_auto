@@ -84,14 +84,31 @@ class EdgeEngine(TTSEngine):
         mp3_path = out_path.with_stem(out_path.stem + "_raw").with_suffix(".mp3")
         mp3_path.parent.mkdir(parents=True, exist_ok=True)
 
-        async def _do() -> None:
-            communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-            await communicate.save(str(mp3_path))
+        async def _do() -> list[dict]:
+            # boundary="WordBoundary": 단어별 타임스탬프 요청 (기본값 SentenceBoundary보다 정밀)
+            communicate = edge_tts.Communicate(
+                text, voice, rate=rate, pitch=pitch, boundary="WordBoundary"
+            )
+            boundaries: list[dict] = []
+            audio_chunks: list[bytes] = []
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_chunks.append(chunk["data"])
+                elif chunk["type"] == "WordBoundary":
+                    # edge-tts 7.x: offset/duration은 100ns 단위, text는 문자열
+                    boundaries.append({
+                        "text": chunk["text"],
+                        "offset_sec": round(chunk["offset"] / 10_000_000, 3),
+                        "duration_sec": round(chunk.get("duration", 0) / 10_000_000, 3),
+                    })
+            mp3_path.write_bytes(b"".join(audio_chunks))
+            return boundaries
 
         last_exc: Exception | None = None
+        word_boundaries: list[dict] = []
         for attempt in range(_MAX_RETRIES):
             try:
-                asyncio.run(_do())
+                word_boundaries = asyncio.run(_do())
                 last_exc = None
                 break
             except Exception as exc:
@@ -116,7 +133,7 @@ class EdgeEngine(TTSEngine):
             sample_rate=24000,
             speaker_id=voice,
             engine=self.name,
-            metadata={"voice": voice, "rate": rate},
+            metadata={"voice": voice, "rate": rate, "word_boundaries": word_boundaries},
         )
 
     def synthesize_segmented(
@@ -140,17 +157,35 @@ class EdgeEngine(TTSEngine):
         temp_mp3s = []
         durations = []
 
+        all_word_boundaries: list[dict] = []  # 전체 타임라인 누적
+        cumulative_offset = 0.0
+
         for i, (name, text) in enumerate(segments):
             seg_mp3 = out_path.with_stem(f"_seg{i}_{out_path.stem}").with_suffix(".mp3")
 
-            async def _save(t=text, p=seg_mp3):
-                communicate = edge_tts.Communicate(t, voice, rate=rate, pitch=pitch)
-                await communicate.save(str(p))
+            async def _stream_seg(t=text, p=seg_mp3):
+                communicate = edge_tts.Communicate(
+                    t, voice, rate=rate, pitch=pitch, boundary="WordBoundary"
+                )
+                boundaries: list[dict] = []
+                chunks: list[bytes] = []
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        chunks.append(chunk["data"])
+                    elif chunk["type"] == "WordBoundary":
+                        boundaries.append({
+                            "text": chunk["text"],
+                            "offset_sec": round(chunk["offset"] / 10_000_000, 3),
+                            "duration_sec": round(chunk.get("duration", 0) / 10_000_000, 3),
+                        })
+                p.write_bytes(b"".join(chunks))
+                return boundaries
 
             last_exc = None
+            seg_boundaries: list[dict] = []
             for attempt in range(_MAX_RETRIES):
                 try:
-                    asyncio.run(_save())
+                    seg_boundaries = asyncio.run(_stream_seg())
                     last_exc = None
                     break
                 except Exception as exc:
@@ -164,6 +199,16 @@ class EdgeEngine(TTSEngine):
             dur = _probe_duration(seg_mp3)
             temp_mp3s.append(seg_mp3)
             durations.append(dur)
+
+            # 세그먼트 오프셋을 누적해 전체 타임라인 기준으로 변환
+            for wb in seg_boundaries:
+                all_word_boundaries.append({
+                    "segment": name,
+                    "text": wb["text"],
+                    "offset_sec": round(wb["offset_sec"] + cumulative_offset, 3),
+                    "duration_sec": wb["duration_sec"],
+                })
+            cumulative_offset += dur + (gaps_list[i] if i < len(segments) - 1 and i < len(gaps_list) else 0)
 
         # Compute exact times
         t = 0.0
@@ -192,7 +237,12 @@ class EdgeEngine(TTSEngine):
             sample_rate=24000,
             speaker_id=voice,
             engine=self.name,
-            metadata={"voice": voice, "rate": rate, "segment_times": segment_times},
+            metadata={
+                "voice": voice,
+                "rate": rate,
+                "segment_times": segment_times,
+                "word_boundaries": all_word_boundaries,
+            },
         )
 
 

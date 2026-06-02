@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ..crawler.llm_creator import LLMCreatorCrawler
+from ..crawler.llm_creator import LLMCreatorCrawler, _in_exam_season
 from ..rewriter.chain import RewriterChain
 from ..rewriter.gemini_client import GeminiRewriter
 from ..rewriter.groq_client import GroqRewriter
@@ -62,16 +62,30 @@ def run(ctx: PipelineContext) -> int:
                     continue
             raise StageError("모든 LLM 백엔드가 사용 불가하거나 실패했습니다.")
 
-        # 최근 사용된 테마를 제외해 다양성 확보 (모든 테마 소진 시 리셋)
-        recent_themes = set(ctx.repos.sources.list_recent_themes(limit=len(themes)))
+        exam_cfg = ctx.section("exam_season")
+
+        # 최근 사용된 테마를 제외해 다양성 확보 (테마의 2/3만 제외 → 항상 1/3 이상 가용)
+        recent_limit = max(len(themes) * 2 // 3, 15)
+        recent_themes = set(ctx.repos.sources.list_recent_themes(limit=recent_limit))
         available_themes = [t for t in themes if t not in recent_themes]
         if not available_themes:
             available_themes = themes
+
+        # 시험 시즌이면 priority_themes를 priority_ratio 비율로 풀에 주입
+        priority_themes = list(exam_cfg.get("priority_themes", []))
+        priority_lead = int(exam_cfg.get("priority_lead_days", 14))
+        priority_ratio = float(exam_cfg.get("priority_ratio", 0.60))
+        if priority_themes and _in_exam_season(list(exam_cfg.get("periods", [])), priority_lead):
+            n_base = len(available_themes)
+            n_pri = max(1, round(n_base * priority_ratio / max(1 - priority_ratio, 0.01)))
+            repeats = max(1, (n_pri + len(priority_themes) - 1) // len(priority_themes))
+            available_themes = available_themes + priority_themes * repeats
+            ctx.log.info("exam_priority_injected", priority_count=len(priority_themes),
+                         injected=len(priority_themes) * repeats, pool=len(available_themes))
+
         ctx.log.info("crawl_theme_pool",
                      total=len(themes), available=len(available_themes),
                      excluded=len(recent_themes & set(themes)))
-
-        exam_cfg = ctx.section("exam_season")
         crawler = LLMCreatorCrawler(
             themes=available_themes,
             llm_call=llm_call,
@@ -92,7 +106,7 @@ def run(ctx: PipelineContext) -> int:
         threshold = float(crawler_cfg.get("duplicate_threshold_cosine", 0.85))
 
         new_id: int | None = None
-        for result in crawler.fetch(limit=3):
+        for result in crawler.fetch(limit=5):
             text_hash = text_sha256(result.motif)
             # 정확 일치 차단
             if ctx.repos.sources.find_by_hash(text_hash):

@@ -215,7 +215,7 @@ def fetch_pexels_videos(
     api_key: str,
     out_root: Path,
     per_keyword: int = 5,
-    min_width: int = 1080,
+    min_width: int = 1920,   # 1080→1920: 세로 합성 시 업스케일 방지 (1920×1080 이상만 수집)
     log,
 ) -> list[dict[str, Any]]:
     if not api_key:
@@ -237,7 +237,7 @@ def fetch_pexels_videos(
                 try:
                     r = client.get(
                         "https://api.pexels.com/videos/search",
-                        params={"query": kw, "per_page": per_keyword, "size": "large"},
+                        params={"query": kw, "per_page": per_keyword, "size": "hd"},
                     )
                     r.raise_for_status()
                 except httpx.HTTPError as e:
