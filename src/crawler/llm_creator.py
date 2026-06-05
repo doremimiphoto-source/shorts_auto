@@ -72,7 +72,8 @@ class LLMCreatorCrawler(SourceCrawler):
         lucky_charm_themes: list[str] | None = None,
         exam_periods: list[dict] | None = None,
         lucky_charm_lead_days: int = 7,
-        lucky_charm_ratio: float = 0.30,
+        lucky_charm_ratio: float = 0.15,
+        used_themes: list[str] | None = None,
     ) -> None:
         if not themes:
             raise ValueError("themes 리스트가 비어 있습니다.")
@@ -83,23 +84,33 @@ class LLMCreatorCrawler(SourceCrawler):
         self.exam_periods = exam_periods or []
         self.lucky_charm_lead_days = lucky_charm_lead_days
         self.lucky_charm_ratio = lucky_charm_ratio
+        self._used_themes: set[str] = set(used_themes or [])
 
     def is_available(self) -> bool:
         return self.llm_call is not None and bool(self.themes)
 
     def _effective_themes(self) -> list[str]:
-        """시험 기간이면 행운 부적 테마를 lucky_charm_ratio 비율로 풀에 추가."""
+        """시험 기간 lucky_charm 주입 + 최근 30일 사용 테마 블랙아웃."""
+        pool = list(self.themes)
+
+        # 시험 기간: lucky_charm 테마 추가
         if (
             self.lucky_charm_themes
             and self.exam_periods
             and _in_exam_season(self.exam_periods, self.lucky_charm_lead_days)
         ):
-            # 비율 계산: normal_n : lucky_n ≈ (1-ratio) : ratio
-            normal_n = len(self.themes)
+            normal_n = len(pool)
             lucky_n = max(1, round(normal_n * self.lucky_charm_ratio / (1 - self.lucky_charm_ratio)))
             repeats = max(1, lucky_n // len(self.lucky_charm_themes))
-            return self.themes + self.lucky_charm_themes * repeats
-        return self.themes
+            pool = pool + self.lucky_charm_themes * repeats
+
+        # 최근 사용 테마 블랙아웃 (30일 이내 사용된 테마 제외)
+        if self._used_themes:
+            fresh = [t for t in pool if t not in self._used_themes]
+            if fresh:  # 신선한 테마가 있을 때만 교체, 없으면 전체 사용
+                pool = fresh
+
+        return pool
 
     def fetch(self, *, limit: int = 10) -> Iterable[CrawlResult]:
         pool = self._effective_themes()

@@ -92,7 +92,7 @@ def run(ctx: PipelineContext) -> int:
             lucky_charm_themes=list(exam_cfg.get("lucky_charm_themes", [])),
             exam_periods=list(exam_cfg.get("periods", [])),
             lucky_charm_lead_days=int(exam_cfg.get("lucky_charm_lead_days", 7)),
-            lucky_charm_ratio=float(exam_cfg.get("lucky_charm_ratio", 0.30)),
+            lucky_charm_ratio=float(exam_cfg.get("lucky_charm_ratio", 0.15)),
         )
         if not crawler.is_available():
             raise StageSkipped("LLMCreatorCrawler가 사용 가능하지 않습니다.")

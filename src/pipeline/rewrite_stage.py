@@ -95,10 +95,23 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         # ① motif 대비
         motif_vec = encode(row["motif"], model_name=embedding_model)
         sim_motif = float(cosine_max(cand_vec, motif_vec.reshape(1, -1)))
-        # ② 30일 대비 — DB 저장 embedding BLOB 재사용으로 재인코딩 생략
+        # ② 30일 대비 — 같은 카테고리 스크립트만 비교 (카테고리 분리)
+        import re as _re
+        _cat_m = _re.match(r'\[([^\]]+)\]', row.get("title") or "")
+        source_category = _cat_m.group(1) if _cat_m else ""
         recent_30d = ctx.repos.scripts.list_recent(days=30, limit=200)
-        corpus_30d = _corpus_from_rows(recent_30d, embedding_model)
+        if source_category:
+            # 같은 카테고리 소스에서 생성된 스크립트만 추출
+            same_cat = ctx.repos.scripts.list_recent_by_category(
+                days=30, category=source_category, limit=100
+            )
+            pool_30d = same_cat if len(same_cat) >= 3 else recent_30d
+        else:
+            pool_30d = recent_30d
+        corpus_30d = _corpus_from_rows(pool_30d, embedding_model)
         sim_30d = float(cosine_max(cand_vec, corpus_30d)) if corpus_30d is not None else 0.0
+        ctx.log.debug("sim30d_category", category=source_category or "전체",
+                      pool_size=len(pool_30d))
         # ③ 누적 평균 — 동일하게 캐시 활용
         cum_sample = ctx.repos.scripts.sample_cumulative(limit=100)
         corpus_cum = _corpus_from_rows(cum_sample, embedding_model)

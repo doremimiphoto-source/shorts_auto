@@ -143,6 +143,21 @@ class ScriptRepository:
             (threshold, limit),
         )
 
+    def list_recent_by_category(self, days: int = 30, *, category: str, limit: int = 100) -> list[dict[str, Any]]:
+        """같은 카테고리([카테고리] 접두사)의 최근 스크립트만 반환 — 카테고리 분리 유사도 비교용."""
+        threshold = (datetime.now() - timedelta(days=days)).isoformat(sep=" ", timespec="seconds")
+        pattern = f"[{category}]%"
+        return self.db.fetchall(
+            """
+            SELECT sc.* FROM scripts sc
+            JOIN sources src ON sc.source_id = src.id
+            WHERE sc.created_at >= ?
+              AND src.title LIKE ?
+            ORDER BY sc.created_at DESC LIMIT ?
+            """,
+            (threshold, pattern, limit),
+        )
+
     def list_recent_hook_patterns(self, *, limit: int = 5) -> list[str]:
         rows = self.db.fetchall(
             "SELECT hook_pattern FROM scripts WHERE hook_pattern IS NOT NULL AND hook_pattern != '' ORDER BY created_at DESC LIMIT ?",
