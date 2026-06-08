@@ -12,7 +12,7 @@ app:
 # ---------- 파이프라인 (FR-7) ----------
 pipeline:
   daily_target_count: 4                # 일 업로드 상한 = 스케줄 배치 수와 동일 (07·15:30·18·22시)
-  schedule_times: ["07:00", "15:30", "18:00", "22:00"]   # KST 기준 실행 시각 (Windows 작업 스케줄러)
+  schedule_times: ["07:00", "15:30", "18:00", "20:00"]   # KST 기준 실행 시각 (Windows 작업 스케줄러)
   upload_jitter_minutes: 20            # 업로드 간격 ±20분 랜덤화 (FR-6.9)
   lock_file: data/pipeline.lock
   killswitch_file: data/killswitch.flag
