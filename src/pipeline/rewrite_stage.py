@@ -54,7 +54,7 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
             raise StageError(f"프롬프트 파일 미존재: {prompt_path}")
         prompt_template = prompt_path.read_text(encoding="utf-8")
 
-        # 3. LLM 호출 (글자 수 미달 시 최대 2회 재시도)
+        # 3. LLM 호출 (글자 수 미달 또는 제목 불량 시 최대 2회 재시도)
         theme = row.get("title") or "사연"
         min_chars = int(rewriter_cfg.get("output", {}).get("target_korean_chars", 100)) - 15
         result = None
@@ -66,9 +66,13 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
                 prompt_template=prompt_template,
             )
             char_len = len(result.full_text)
-            if char_len >= min_chars:
+            title_ok = _is_valid_title(strip_cjk(result.title or ""))
+            if char_len >= min_chars and title_ok:
                 break
-            ctx.log.warning("rewrite_too_short", attempt=attempt + 1, chars=char_len, min=min_chars)
+            if char_len < min_chars:
+                ctx.log.warning("rewrite_too_short", attempt=attempt + 1, chars=char_len, min=min_chars)
+            if not title_ok:
+                ctx.log.warning("rewrite_title_invalid", attempt=attempt + 1, title=result.title)
         assert result is not None
 
         # 3b. 한자·일본어 제거 (LLM이 규칙을 어기고 CJK를 섞는 경우 대비)
@@ -206,6 +210,15 @@ def _best_match_from_rows(
     scores = mat @ cand_vec.reshape(-1)
     idx = int(np.argmax(scores))
     return float(scores[idx]), valid_rows[idx]
+
+
+def _is_valid_title(title: str) -> bool:
+    """제목 최소 품질 검증: 10자 이상 + 한글·영문·숫자 5자 이상 포함."""
+    import re
+    if len(title) < 10:
+        return False
+    real = re.sub(r"[^가-힣A-Za-z0-9]", "", title)
+    return len(real) >= 5
 
 
 def _corpus_from_rows(rows: list[dict], model_name: str) -> "np.ndarray | None":
