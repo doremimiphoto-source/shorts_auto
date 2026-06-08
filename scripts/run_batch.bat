@@ -25,6 +25,9 @@ set "HF_DATASETS_OFFLINE=1"
 
 cd /d "D:\Application\Claude\shorts_auto"
 
+:: 절전 해제 후 지연 실행 시 Windows 초기화 대기 (네트워크·보안 서비스 안정화)
+timeout /t 30 /nobreak > nul 2>&1
+
 set "BAT_LOG=D:\Application\Claude\shorts_auto\logs\batch_stderr.log"
 "%PYTHON_EXE%" -m scripts.run_batch --count 1 2>>"%BAT_LOG%"
 
