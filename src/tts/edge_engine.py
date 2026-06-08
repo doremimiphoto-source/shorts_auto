@@ -25,15 +25,47 @@ _VOICE_RATE: dict[str, str] = {
     "ko-KR-HyunsuMultilingualNeural":  "-5%",    # 다국어 남성 (폴백용)
 }
 
-# 피치 조정 — +18Hz: 중학생 여성의 맑고 높은 음역대 연출
+# 피치 조정 — cheerful 스타일과 함께 사용: +14Hz로 자연스러운 중학생 여성 음역대 유지
 _VOICE_PITCH: dict[str, str] = {
-    "ko-KR-SunHiNeural":               "+18Hz",  # 중학생 여성 특유의 높고 또렷한 피치
+    "ko-KR-SunHiNeural":               "+14Hz",  # cheerful 스타일이 에너지 추가 → 과잉 방지
     "ko-KR-InJoonNeural":              "-2Hz",
     "ko-KR-HyunsuMultilingualNeural":  "+0Hz",
 }
 
+# SSML mstts:express-as 스타일 — SunHiNeural: cheerful(밝고 에너지), sad 지원
+# cheerful: 중학생 여성 특유의 친근하고 활기찬 톤 연출
+_VOICE_STYLE: dict[str, str] = {
+    "ko-KR-SunHiNeural": "cheerful",
+}
+
 _DEFAULT_VOICES = list(_VOICE_RATE.keys())
 _FAIL_THRESHOLD = 5
+
+
+def _to_ssml(text: str, voice: str, rate: str, pitch: str) -> str:
+    """SSML 래퍼 — mstts:express-as style + prosody rate/pitch.
+
+    _VOICE_STYLE에 등록된 voice만 SSML로 변환; 나머지는 plain text 그대로 반환.
+    HTML 특수문자(<>&"')는 escape 처리.
+    """
+    import html
+    style = _VOICE_STYLE.get(voice)
+    if not style:
+        return text
+    return (
+        "<speak version='1.0' "
+        "xmlns='http://www.w3.org/2001/10/synthesis' "
+        "xmlns:mstts='http://www.w3.org/2001/mstts' "
+        "xml:lang='ko-KR'>"
+        f"<voice name='{voice}'>"
+        f"<mstts:express-as style='{style}'>"
+        f"<prosody rate='{rate}' pitch='{pitch}'>"
+        f"{html.escape(text)}"
+        "</prosody>"
+        "</mstts:express-as>"
+        "</voice>"
+        "</speak>"
+    )
 _MAX_RETRIES = 3
 _RETRY_BASE_WAIT = 2  # 초, 지수 백오프: 2s, 4s
 
@@ -85,9 +117,12 @@ class EdgeEngine(TTSEngine):
         mp3_path.parent.mkdir(parents=True, exist_ok=True)
 
         async def _do() -> list[dict]:
-            # boundary="WordBoundary": 단어별 타임스탬프 요청 (기본값 SentenceBoundary보다 정밀)
+            ssml = _to_ssml(text, voice, rate, pitch)
+            is_ssml = ssml.startswith("<speak")
+            # SSML 사용 시 rate/pitch는 <prosody> 안에 포함 → Communicate 생성자에 미전달
             communicate = edge_tts.Communicate(
-                text, voice, rate=rate, pitch=pitch, boundary="WordBoundary"
+                ssml, voice, boundary="WordBoundary",
+                **({} if is_ssml else {"rate": rate, "pitch": pitch}),
             )
             boundaries: list[dict] = []
             audio_chunks: list[bytes] = []
@@ -164,8 +199,11 @@ class EdgeEngine(TTSEngine):
             seg_mp3 = out_path.with_stem(f"_seg{i}_{out_path.stem}").with_suffix(".mp3")
 
             async def _stream_seg(t=text, p=seg_mp3):
+                ssml = _to_ssml(t, voice, rate, pitch)
+                is_ssml = ssml.startswith("<speak")
                 communicate = edge_tts.Communicate(
-                    t, voice, rate=rate, pitch=pitch, boundary="WordBoundary"
+                    ssml, voice, boundary="WordBoundary",
+                    **({} if is_ssml else {"rate": rate, "pitch": pitch}),
                 )
                 boundaries: list[dict] = []
                 chunks: list[bytes] = []
