@@ -234,8 +234,26 @@ class VideoComposer:
             logo_chain = ""
             pre_sub = "bg_full"
 
-        # ④ 자막 번인
-        sub_chain = f"[{pre_sub}]subtitles='{sub_arg}':fontsdir='{fonts_arg}'[v]"
+        # ④ 자막 번인 + 엔딩 구독 CTA (마지막 3초 drawtext)
+        # Pretendard-Bold: 채널 브랜드 폰트, 한국어 가독성 최상
+        font_file = (
+            str(self.cfg.fonts_dir / "Pretendard-Bold.otf")
+            .replace("\\", "/").replace(":", r"\:")
+        )
+        endcard_t = max(audio_duration - 3.0, 1.0)
+        endcard_y = bot_y + bot_h - 70  # 하단 바 하부 (y≈1850)
+        endcard = (
+            f"drawtext=fontfile='{font_file}':"
+            f"text='구독하면 매일 공부 치트키\\!':"
+            f"fontsize=34:fontcolor=white@0.95:"
+            f"x=(w-text_w)/2:y={endcard_y}:"
+            f"enable='gte(t,{endcard_t:.1f})':"
+            f"box=1:boxcolor=0x00000090:boxborderw=10"
+        )
+        sub_chain = (
+            f"[{pre_sub}]subtitles='{sub_arg}':fontsdir='{fonts_arg}'[vsub];"
+            f"[vsub]{endcard}[v]"
+        )
 
         # ⑤ BGM 더킹 — duration=first: TTS 오디오([1:a]) 길이 기준으로 종료 (BGM이 짧아도 잘림 없음)
         audio_chain = (

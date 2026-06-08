@@ -110,6 +110,27 @@ class YouTubeUploader:
             quota_units_used=self.UPLOAD_QUOTA_COST,
         )
 
+    def add_to_playlist(self, *, youtube_video_id: str, playlist_id: str) -> bool:
+        """영상을 재생목록에 추가. 성공 True, 실패 False (비치명적).
+
+        YouTube API quota: 50 units/건.
+        """
+        self._ensure_service()
+        assert self._service is not None
+        try:
+            self._service.playlistItems().insert(
+                part="snippet",
+                body={
+                    "snippet": {
+                        "playlistId": playlist_id,
+                        "resourceId": {"kind": "youtube#video", "videoId": youtube_video_id},
+                    }
+                },
+            ).execute()
+            return True
+        except Exception:
+            return False
+
     def upload_thumbnail(self, *, youtube_video_id: str, thumbnail_path: Path) -> bool:
         """커스텀 썸네일 등록. 성공 시 True, 실패 시 False (비치명적).
 

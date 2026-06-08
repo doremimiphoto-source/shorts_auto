@@ -7,10 +7,19 @@
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 from ..uploader.youtube import UploadMetadata, YouTubeUploader
 from .context import PipelineContext, StageError, StageSkipped, stage_timer
+
+# 소스 카테고리 → playlists.json 키 정규화
+_CATEGORY_ALIASES: dict[str, str] = {
+    "시험행운부적": "행운부적",
+    "행운부적": "행운부적",
+    "luckycharm": "행운부적",
+}
 
 # 채널 고정 기본 태그 — 매 영상에 항상 포함 (알고리즘 채널 정체성 강화)
 _CHANNEL_BASE_TAGS = [
@@ -155,6 +164,10 @@ def run(ctx: PipelineContext, *, video_id: int) -> int:
         ctx.repos.uploads.update_status(upload_id, status="success")
         ctx.repos.api_usage.record(api_name="youtube", units_used=result.quota_units_used, succeeded=True)
 
+        # 카테고리별 재생목록 자동 배정 (비치명적 — 실패해도 업로드는 성공 처리)
+        _assign_playlist(ctx, uploader=uploader, script=script,
+                         youtube_video_id=result.youtube_video_id)
+
         state["message"] = f"upload_id={upload_id}, youtube={result.youtube_video_id}"
         return upload_id
 
@@ -215,6 +228,44 @@ def _seo_keyword_line(script: dict) -> str:
     elif any(k in full for k in ("집중", "집중력")):
         keywords.append("공부 집중력")
     return " | ".join(keywords[:3])
+
+
+def _assign_playlist(ctx: PipelineContext, *, uploader: YouTubeUploader,
+                     script: dict | None, youtube_video_id: str) -> None:
+    """업로드된 영상을 소스 카테고리에 맞는 재생목록에 추가 (비치명적)."""
+    try:
+        playlists_path = ctx.project_root / "data" / "playlists.json"
+        if not playlists_path.exists():
+            return
+        playlists: dict[str, str] = json.loads(playlists_path.read_text(encoding="utf-8"))
+        if not playlists:
+            return
+
+        # 소스 제목에서 [카테고리] 추출
+        source_id = (script or {}).get("source_id")
+        source_title = ""
+        if source_id:
+            row = ctx.repos.db.fetchone("SELECT title FROM sources WHERE id = ?", (source_id,))
+            source_title = (row or {}).get("title", "")
+
+        m = re.match(r'\[([^\]]+)\]', source_title.strip())
+        raw_cat = m.group(1).strip() if m else ""
+        # 공백 제거 후 별칭 정규화
+        cat_key = _CATEGORY_ALIASES.get(raw_cat.replace(" ", ""), raw_cat.replace(" ", ""))
+
+        playlist_id = playlists.get(cat_key)
+        if not playlist_id:
+            ctx.log.debug("playlist_no_match", category=cat_key, source_title=source_title[:50])
+            return
+
+        ok = uploader.add_to_playlist(youtube_video_id=youtube_video_id, playlist_id=playlist_id)
+        if ok:
+            ctx.log.info("playlist_assigned", category=cat_key, playlist_id=playlist_id,
+                         youtube_id=youtube_video_id)
+        else:
+            ctx.log.warning("playlist_assign_failed", category=cat_key, youtube_id=youtube_video_id)
+    except Exception as e:
+        ctx.log.warning("playlist_assign_error", error=repr(e))
 
 
 def _build_tags(hashtags: list[str]) -> list[str]:
