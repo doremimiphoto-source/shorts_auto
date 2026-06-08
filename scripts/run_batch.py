@@ -115,7 +115,16 @@ def main() -> None:
         db.close()
         sys.exit(0)
 
-    notifier = DiscordNotifier(webhook_url=settings.secrets.discord_webhook_url)
+    queue_path = settings.project_path("data/pending_notifications.jsonl")
+    notifier = DiscordNotifier(
+        webhook_url=settings.secrets.discord_webhook_url,
+        queue_path=queue_path,
+    )
+
+    # ── 미발송 알림 재발송 (네트워크 복구 후) ────────────────────
+    flushed = notifier.flush_queue()
+    if flushed:
+        print(f"[BATCH] 미발송 알림 {flushed}건 재발송 완료")
 
     # ── 컨셉 중복 사전 점검 표시 ────────────────────────────────
     concept_log_path = settings.project_path("data/concept_log.jsonl")

@@ -29,7 +29,10 @@ def text_sha256(text: str) -> str:
 
 @lru_cache(maxsize=2)
 def _load_model(model_name: str) -> "SentenceTransformer":
-    # 임포트는 함수 내부에서 (모듈 임포트 시 다운로드 트리거 회피)
+    import os
+    # 로컬 캐시 강제 사용 — 네트워크 장애 시에도 안정 동작
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer(model_name)

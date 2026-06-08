@@ -20,6 +20,8 @@ set "PYTHONUTF8=1"
 set "TRANSFORMERS_CACHE=%USERPROFILE_DIR%\.cache\huggingface\hub"
 set "HF_HOME=%USERPROFILE_DIR%\.cache\huggingface"
 set "SENTENCE_TRANSFORMERS_HOME=%USERPROFILE_DIR%\.cache\torch\sentence_transformers"
+set "TRANSFORMERS_OFFLINE=1"
+set "HF_DATASETS_OFFLINE=1"
 
 cd /d "D:\Application\Claude\shorts_auto"
 
