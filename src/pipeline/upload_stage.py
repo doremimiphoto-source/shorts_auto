@@ -97,12 +97,17 @@ def run(ctx: PipelineContext, *, video_id: int) -> int:
             "💡 " + twist_text,
             "",
             "─" * 30,
+            "🔔 구독하면 매일 새 공부 치트키가 올라옵니다!",
+            "👍 좋아요 한 번이 다음 영상 제작에 큰 힘이 됩니다",
+            "",
+            "📚 이 채널은 중학생을 위한 공부법 · 시험 전략 · 수행평가 꿀팁을 매일 Shorts로 올립니다.",
+            "",
+            "─" * 30,
             "",
             hashtag_line,
             "",
             "─" * 30,
             ai_prefix if ai_prefix else "※ 이 영상은 AI 음성·영상 도구를 활용해 제작했습니다.",
-            "📌 구독과 좋아요는 더 좋은 콘텐츠 제작에 큰 힘이 됩니다!",
         ]
         description = "\n".join(line for line in description_lines)
 

@@ -316,7 +316,7 @@ renderer:
   bgm:
     pool_dir: assets/bgm
     min_pool_size: 30                  # FR-5.5
-    duck_db: -22                       # 사이드체인 더킹 — 나레이션 명료도 우선 (FR-5.3)
+    duck_db: -18                       # BGM 더킹 레벨 — -22에서 완화, 배경음 존재감 유지 (FR-5.3)
     blacklist_path: data/bgm_blacklist.json
     content_id_check_after_minutes: 10 # 업로드 후 검사 (A10)
 
@@ -370,7 +370,7 @@ uploader:
   metadata:
     title_suffix: " #Shorts"           # FR-6.3
     description_template_path: prompts/upload_description.txt
-    category_id: 22                    # 22 = People & Blogs (FR-6.5)
+    category_id: 27                    # 27 = Education (중학생 공부법 채널 적합)
     made_for_kids: false               # FR-6.6
     self_declared_made_for_kids: false
     privacy_status: public             # public | unlisted | private
