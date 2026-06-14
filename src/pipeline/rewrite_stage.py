@@ -58,6 +58,7 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
         theme = row.get("title") or "사연"
         min_chars = int(rewriter_cfg.get("output", {}).get("target_korean_chars", 100)) - 15
         result = None
+        best_result = None  # 재시도 중 가장 긴 결과 보존
         for attempt in range(3):
             result = chain.generate(
                 theme=theme,
@@ -67,12 +68,20 @@ def run(ctx: PipelineContext, *, source_id: int) -> int:
             )
             char_len = len(result.full_text)
             title_ok = _is_valid_title(strip_cjk(result.title or ""))
+            # 가장 긴 결과를 best로 유지
+            if best_result is None or char_len > len(best_result.full_text):
+                best_result = result
             if char_len >= min_chars and title_ok:
                 break
             if char_len < min_chars:
                 ctx.log.warning("rewrite_too_short", attempt=attempt + 1, chars=char_len, min=min_chars)
             if not title_ok:
                 ctx.log.warning("rewrite_title_invalid", attempt=attempt + 1, title=result.title)
+        else:
+            # 3번 모두 품질 기준 미달 → 가장 긴 결과 사용 (최선)
+            result = best_result
+            ctx.log.warning("rewrite_all_attempts_failed",
+                            best_chars=len(result.full_text), min=min_chars)
         assert result is not None
 
         # 3b. 한자·일본어 제거 (LLM이 규칙을 어기고 CJK를 섞는 경우 대비)

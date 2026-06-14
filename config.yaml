@@ -185,15 +185,15 @@ crawler:
 # ---------- 대본 생성 (FR-2) ----------
 rewriter:
   # GPU 미보유 환경: 클라우드 무료 API 우선
-  primary: gemini                      # gemini | groq | ollama
-  fallback_chain: [gemini, groq, ollama]
+  primary: groq                        # groq | gemini | ollama (gemini-2.5-flash ReadTimeout 빈번 → groq가 주력)
+  fallback_chain: [groq, gemini, ollama]
 
   gemini:
-    model: gemini-2.5-flash
+    model: gemini-2.0-flash            # 2.5-flash → 2.0-flash: thinking 없음, 빠른 응답, ReadTimeout 방지
     rpm_limit: 15                      # 자율 제한
     rpd_limit: 1500
     temperature: 0.85
-    max_output_tokens: 8192            # 2.5-flash thinking 토큰 예산 포함 (구 SDK: MAX_TOKENS 방지)
+    max_output_tokens: 4096            # 2.0-flash: thinking 없으므로 4096으로 충분
 
   groq:
     model: llama-3.3-70b-versatile
