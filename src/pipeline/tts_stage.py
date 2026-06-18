@@ -55,7 +55,36 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
         hook_text  = _sanitize_for_ko_tts(script.get("hook")  or "")
         body_text  = _sanitize_for_ko_tts(script.get("body")  or "")
         twist_text = _sanitize_for_ko_tts(script.get("twist") or "")
-        raw_segs = [("hook", hook_text), ("body", body_text), ("twist", twist_text)]
+
+        # body를 문장 단위로 분리해 각 문장 사이 0.40s 갭 삽입
+        body_sents = _split_body_for_tts(body_text)
+        n_body = len(body_sents)
+        has_hook  = bool(hook_text.strip())
+        has_twist = bool(twist_text.strip())
+
+        if n_body > 1:
+            raw_segs: list[tuple[str, str]] = []
+            if has_hook:  raw_segs.append(("hook", hook_text))
+            for i, sent in enumerate(body_sents):
+                raw_segs.append((f"body_s{i}", sent))
+            if has_twist: raw_segs.append(("twist", twist_text))
+            seg_names = [n for n, _ in raw_segs]
+            gaps_list: list[float] = []
+            for j in range(len(seg_names) - 1):
+                a, b = seg_names[j], seg_names[j + 1]
+                if a == "hook":
+                    gaps_list.append(0.35)
+                elif a.startswith("body_s") and b.startswith("body_s"):
+                    gaps_list.append(0.40)
+                elif a.startswith("body_s") and b == "twist":
+                    gaps_list.append(0.50)
+                else:
+                    gaps_list.append(0.35)
+            gaps: tuple[float, ...] = tuple(gaps_list)
+        else:
+            raw_segs = [("hook", hook_text), ("body", body_text), ("twist", twist_text)]
+            gaps = (0.35, 0.50)
+
         segments = [(n, t) for n, t in raw_segs if t.strip()]
 
         if len(segments) >= 2:
@@ -63,6 +92,7 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
                 segments=segments,
                 out_path=wav_path,
                 speaker_id=speaker_id,
+                gaps=gaps,
             )
         else:
             synth = engine.synthesize(
@@ -90,14 +120,30 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
             ffmpeg_bin=_resolve_ffmpeg(),
         )
 
-        import json
+        import json, re as _re
+        # body_s* 세그먼트를 단일 "body" 집계 키로 정규화 (자막 단계 호환)
+        segment_times = dict(synth.metadata.get("segment_times", {}))
+        word_boundaries = list(synth.metadata.get("word_boundaries", []))
+        body_s_keys = sorted(
+            [k for k in segment_times if _re.match(r"^body_s\d+$", k)],
+            key=lambda k: int(k[6:])
+        )
+        if body_s_keys:
+            body_agg = {
+                "start": segment_times[body_s_keys[0]]["start"],
+                "end":   segment_times[body_s_keys[-1]]["end"],
+            }
+            for k in body_s_keys:
+                del segment_times[k]
+            segment_times["body"] = body_agg
+            for wb in word_boundaries:
+                if _re.match(r"^body_s\d+$", wb.get("segment", "")):
+                    wb["segment"] = "body"
         # 세그먼트 타이밍 사이드카 저장
-        segment_times = synth.metadata.get("segment_times", {})
         if segment_times:
             times_path = mp3_path.parent / (mp3_path.stem + "_times.json")
             times_path.write_text(json.dumps(segment_times, ensure_ascii=False), "utf-8")
         # 단어 단위 타임스탬프 사이드카 저장 (subtitle sync 정밀화용)
-        word_boundaries = synth.metadata.get("word_boundaries", [])
         if word_boundaries:
             wb_path = mp3_path.parent / (mp3_path.stem + "_words.json")
             wb_path.write_text(json.dumps(word_boundaries, ensure_ascii=False), "utf-8")
@@ -378,6 +424,18 @@ def _sanitize_for_ko_tts(text: str) -> str:
         else:
             result.append(" ")
     return "".join(result).strip()
+
+
+def _split_body_for_tts(text: str) -> list[str]:
+    """body 텍스트를 마침표·느낌표·물음표 기준으로 문장 분리.
+
+    분리된 각 문장은 별도 TTS 세그먼트로 처리되어 0.40s 갭이 삽입된다.
+    단일 문장(분리 불가)이면 원문 단일 요소 리스트 반환.
+    """
+    import re
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    parts = [p.strip() for p in parts if p.strip()]
+    return parts if len(parts) > 1 else [text.strip()]
 
 
 def _convert_with_loudnorm(

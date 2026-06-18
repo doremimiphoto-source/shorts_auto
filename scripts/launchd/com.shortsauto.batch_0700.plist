@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shortsauto.batch_0700</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPLACE_WITH_PROJECT_PATH/scripts/run_batch.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>   <integer>7</integer>
+        <key>Minute</key> <integer>0</integer>
+    </dict>
+
+    <!-- 놓친 실행을 다음 기회에 즉시 실행 (StartWhenAvailable 대체) -->
+    <key>StartInterval</key>
+    <integer>0</integer>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_WITH_PROJECT_PATH/logs/launchd_0700.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACE_WITH_PROJECT_PATH/logs/launchd_0700.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

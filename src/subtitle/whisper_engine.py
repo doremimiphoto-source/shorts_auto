@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..utils.korean import strip_cjk as _strip_ko_clean
+
 
 @dataclass
 class SubtitleSegment:
@@ -201,9 +203,9 @@ def make_styled_subtitles(
     style_overrides 키: title_anim / tag_hook / tag_body / tag_twist /
                         emph_hook / emph_body / emph_twist (각각 (open, close) 튜플)
     """
-    hook  = _strip_cjk((script.get("hook")  or "").strip())
-    body  = _strip_cjk((script.get("body")  or "").strip())
-    twist = _strip_cjk((script.get("twist") or "").strip())
+    hook  = _strip_ko_clean((script.get("hook")  or "").strip())
+    body  = _strip_ko_clean((script.get("body")  or "").strip())
+    twist = _strip_ko_clean((script.get("twist") or "").strip())
     emph_words = [w.strip() for w in (script.get("emphasis_words") or []) if w.strip()]
 
     _so = style_overrides or {}
@@ -259,7 +261,7 @@ def make_styled_subtitles(
 
     extra: list[str] = []
     full_end = _ass_time(audio_duration)
-    title_text = _strip_cjk((script.get("title") or "").strip())
+    title_text = _strip_ko_clean((script.get("title") or "").strip())
     if title_text:
         wrapped_title = _wrap_text_lines(title_text, max_ko_per_line=9)
         extra.append(f"Dialogue: 1,0:00:00.00,{full_end},Title,,0,0,0,,{ta}{wrapped_title}\n")
