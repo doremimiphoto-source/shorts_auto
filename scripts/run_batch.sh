@@ -10,7 +10,6 @@ export PYTHONIOENCODING=utf-8
 export PYTHONUTF8=1
 export HF_HOME="$HOME/.cache/huggingface"
 export TRANSFORMERS_CACHE="$HOME/.cache/huggingface/hub"
-export SENTENCE_TRANSFORMERS_HOME="$HOME/.cache/torch/sentence_transformers"
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
