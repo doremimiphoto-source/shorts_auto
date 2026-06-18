@@ -157,10 +157,10 @@ def _patch_g2pkk_for_windows() -> None:
     사연 문장에서는 청각 차이가 크지 않다. 향후 필요 시 mecab-ko-dic을 별도
     설치하여 진짜 분석기로 교체 가능.
     """
-    import platform
-    if platform.system() != "Windows":
-        return
     import sys
+    # Windows: python-mecab-ko가 mecab-python3(일본어)와 MeCab 네임스페이스 충돌
+    # Mac: eunjeon(Korean MeCab)이 빌드 복잡하므로 동일 stub 적용
+    # → 모든 플랫폼에서 eunjeon stub 등록 (phoneme 일부 생략되나 실용적 차이 미미)
 
     if "eunjeon" in sys.modules:
         return

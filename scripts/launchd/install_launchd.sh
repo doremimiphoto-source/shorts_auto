@@ -26,11 +26,13 @@ for label in "${ALL_LABELS[@]}"; do
     launchctl unload "$LAUNCHD_DIR/$label.plist" 2>/dev/null || true
 done
 
-# plist 복사 + 경로 치환
+# plist 복사 + 경로 치환 (PROJECT_DIR + HOME)
 for plist in "$PLIST_SRC"/*.plist; do
     fname="$(basename "$plist")"
     dest="$LAUNCHD_DIR/$fname"
-    sed "s|REPLACE_WITH_PROJECT_PATH|$PROJECT_DIR|g" "$plist" > "$dest"
+    sed -e "s|REPLACE_WITH_PROJECT_PATH|$PROJECT_DIR|g" \
+        -e "s|REPLACE_WITH_HOME|$HOME|g" \
+        "$plist" > "$dest"
     chmod 644 "$dest"
     echo "설치: $dest"
 done

@@ -256,7 +256,7 @@ tts:
 
   piper:                               # 한국어 미지원 — 영어용으로만 사용 가능 (보관)
     enabled: false
-    bin: models/piper/bin/piper.exe
+    bin: models/piper/bin/piper        # Windows는 .env에서 PIPER_BIN_PATH=models/piper/bin/piper.exe 로 override
     voices: []                         # 한국어 voice가 추가될 때 등록
 
   edge:                                # Microsoft Neural TTS — 감성 명언 채널 주력

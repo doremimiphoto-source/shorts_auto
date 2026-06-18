@@ -15,7 +15,11 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
 # Homebrew PATH 보장 (launchd는 사용자 PATH를 상속하지 않음)
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/bin:$PATH"
+
+# macOS Homebrew Python은 시스템 keychain 미사용 → certifi CA 번들 명시
+export SSL_CERT_FILE="$("$PYTHON_EXE" -c "import certifi; print(certifi.where())")"
+export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
 mkdir -p "$PROJECT_DIR/logs"
 
