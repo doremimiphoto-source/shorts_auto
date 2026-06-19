@@ -149,17 +149,19 @@ def _build_rewriter_chain(ctx: PipelineContext, rewriter_cfg: dict) -> RewriterC
             cfg = rewriter_cfg.get("gemini", {})
             backends.append(GeminiRewriter(
                 api_key=secrets.gemini_api_key,
-                model=cfg.get("model", "gemini-2.5-flash"),
+                model=cfg.get("model", "gemini-2.0-flash"),
                 temperature=float(cfg.get("temperature", 0.85)),
-                max_output_tokens=int(cfg.get("max_output_tokens", 1024)),
+                max_output_tokens=int(cfg.get("max_output_tokens", 4096)),
+                timeout_sec=int(cfg.get("timeout_sec", 120)),
             ))
         elif name == "groq" and secrets.groq_api_key:
             cfg = rewriter_cfg.get("groq", {})
             backends.append(GroqRewriter(
                 api_key=secrets.groq_api_key,
-                model=cfg.get("model", "llama-3.1-8b-instant"),
+                model=cfg.get("model", "llama-3.3-70b-versatile"),
                 temperature=float(cfg.get("temperature", 0.85)),
-                max_tokens=int(cfg.get("max_tokens", 1024)),
+                max_tokens=int(cfg.get("max_tokens", 2048)),
+                timeout_sec=int(cfg.get("timeout_sec", 90)),
             ))
         elif name == "ollama":
             cfg = rewriter_cfg.get("ollama", {})

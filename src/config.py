@@ -40,6 +40,10 @@ class Secrets(BaseSettings):
 
     discord_webhook_url: str = ""
 
+    # ---------- Telegram Bot ----------
+    telegram_bot_token: str = ""
+    telegram_allowed_users: str = ""   # 콤마 구분 user_id 목록 예: "123456789,987654321"
+
     log_level: str = "INFO"
     timezone: str = "Asia/Seoul"
     app_env: str = "development"

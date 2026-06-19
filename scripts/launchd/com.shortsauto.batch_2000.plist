@@ -9,7 +9,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/doremi/Developer/shorts_auto/scripts/run_batch.sh</string>
+        <string>REPLACE_WITH_PROJECT_PATH/scripts/run_batch.sh</string>
     </array>
 
     <key>StartCalendarInterval</key>
@@ -19,9 +19,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/doremi/Developer/shorts_auto/logs/launchd_2000.log</string>
+    <string>REPLACE_WITH_PROJECT_PATH/logs/launchd_2000.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/doremi/Developer/shorts_auto/logs/launchd_2000.err</string>
+    <string>REPLACE_WITH_PROJECT_PATH/logs/launchd_2000.err</string>
 
     <key>RunAtLoad</key>
     <false/>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shortsauto.bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_WITH_PROJECT_PATH/.venv/bin/python</string>
+        <string>-m</string>
+        <string>bot.main</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_PROJECT_PATH</string>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_WITH_PROJECT_PATH/logs/bot_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACE_WITH_PROJECT_PATH/logs/bot_stderr.log</string>
+
+    <!-- 크래시 시 자동 재시작 -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- 로그인 시 즉시 실행 -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- launchd는 사용자 PATH를 상속하지 않으므로 명시 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>REPLACE_WITH_HOME</string>
+    </dict>
+
+    <!-- 재시작 간격: 10초 (연속 크래시 방지) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

@@ -185,18 +185,20 @@ crawler:
 # ---------- 대본 생성 (FR-2) ----------
 rewriter:
   # GPU 미보유 환경: 클라우드 무료 API 우선
-  primary: groq                        # groq | gemini | ollama (gemini-2.5-flash ReadTimeout 빈번 → groq가 주력)
-  fallback_chain: [groq, gemini, ollama]
+  primary: gemini                      # gemini-2.0-flash: 1M TPM 무료 한도 (프롬프트 6069t → Groq 6000 TPM 초과로 변경)
+  fallback_chain: [gemini, groq, ollama]
 
   gemini:
-    model: gemini-2.0-flash            # 2.5-flash → 2.0-flash: thinking 없음, 빠른 응답, ReadTimeout 방지
+    model: gemini-2.0-flash            # 2.5-flash → 2.0-flash: thinking 없음, 빠른 응답
+    timeout_sec: 120                   # 429 rate-limit 대기(~50s) 포함 여유있게 설정
     rpm_limit: 15                      # 자율 제한
     rpd_limit: 1500
     temperature: 0.85
-    max_output_tokens: 4096            # 2.0-flash: thinking 없으므로 4096으로 충분
+    max_output_tokens: 4096
 
   groq:
-    model: llama-3.3-70b-versatile
+    model: llama-3.3-70b-versatile     # 8b-instant는 TPM 6000으로 프롬프트(6069t) 처리 불가 → 70b 복원
+    timeout_sec: 90                    # Gemini rate-limit 후 폴백 대응
     rpm_limit: 30
     temperature: 0.85
     max_tokens: 2048

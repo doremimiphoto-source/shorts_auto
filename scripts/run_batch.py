@@ -30,23 +30,32 @@ if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 
-def _acquire_batch_lock(lock_path: Path, max_age_seconds: int = 3600) -> bool:
-    """중복 배치 실행 방지 락 획득. True=정상 실행 가능, False=이미 실행 중."""
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    if lock_path.exists():
-        age = time.time() - lock_path.stat().st_mtime
-        if age < max_age_seconds:
-            try:
-                old_pid = int(lock_path.read_text().strip())
-                # Windows: 프로세스 생존 여부 확인 (signal 0)
-                os.kill(old_pid, 0)
-                return False  # 이전 배치 아직 실행 중
-            except (OSError, ValueError):
-                pass  # 프로세스 없음 → 락 파일 낡음
-        lock_path.unlink(missing_ok=True)
+_lock_fd = None  # fd 참조 유지 — GC로 닫히면 flock 해제됨
 
-    lock_path.write_text(str(os.getpid()))
-    atexit.register(lambda: lock_path.unlink(missing_ok=True))
+
+def _acquire_batch_lock(lock_path: Path) -> bool:
+    """중복 배치 실행 방지 락 획득 (OS 레벨 flock).
+
+    PID 기반 락은 동시 실행 시 경쟁 조건(race condition)이 있다.
+    macOS 절전 해제 후 launchd가 누락 배치를 동시에 실행할 때
+    두 프로세스가 같은 순간 락 파일을 체크해 모두 통과하는 문제 방지.
+
+    fcntl.flock(LOCK_EX | LOCK_NB): 원자적 OS 레벨 잠금.
+    프로세스가 종료(정상/비정상 무관)되면 fd가 닫혀 자동 해제.
+    """
+    global _lock_fd
+    import fcntl
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = open(lock_path, "w")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fd.close()
+        return False  # 다른 프로세스가 락 보유 중
+    fd.write(str(os.getpid()))
+    fd.flush()
+    _lock_fd = fd  # fd 생존 유지 (닫히면 flock 해제되므로)
     return True
 
 from src.config import get_settings

@@ -24,7 +24,8 @@ mkdir -p "$PROJECT_DIR/logs"
 
 cd "$PROJECT_DIR"
 
-# 절전 해제/로그인 직후 시스템 안정화 대기
-sleep 30
+# 절전 해제 후 launchd가 누락 배치를 동시에 실행하는 문제 방지.
+# 랜덤 지연(30~119초)으로 동시 시작 시에도 락 경쟁을 회피한다.
+sleep $((30 + RANDOM % 90))
 
 "$PYTHON_EXE" -m scripts.run_batch --count 1 2>>"$LOG_FILE"
