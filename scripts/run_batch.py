@@ -61,6 +61,7 @@ def _acquire_batch_lock(lock_path: Path) -> bool:
 from src.config import get_settings
 from src.db import open_database
 from src.notify.discord_webhook import DiscordNotifier
+from src.notify.telegram_notifier import TelegramNotifier
 from src.pipeline import PipelineContext
 from src.pipeline.context import StageSkipped, StageError
 from src.pipeline.crawl_stage import run as run_crawl
@@ -128,6 +129,10 @@ def main() -> None:
     notifier = DiscordNotifier(
         webhook_url=settings.secrets.discord_webhook_url,
         queue_path=queue_path,
+    )
+    tg = TelegramNotifier(
+        bot_token=settings.secrets.telegram_bot_token,
+        allowed_users=settings.secrets.telegram_allowed_users,
     )
 
     # ── 미발송 알림 재발송 (네트워크 복구 후) ────────────────────
@@ -253,6 +258,10 @@ def main() -> None:
                 extra={"run_id": run_id, "video_id": str(video_id) if video_id else "-"},
             )
 
+            # LLM 백엔드 전체 불가 → 텔레그램 즉시 알림 (남은 배치도 실패할 것이므로 즉시 통보)
+            if "모든 LLM 백엔드" in str(e) or "backend" in str(e).lower():
+                tg.send_llm_unavailable(run_id=run_id, backends=["gemini", "groq"])
+
     # ── daily_kpi 집계 ──────────────────────────────────────────
     try:
         db.execute(
@@ -285,6 +294,15 @@ def main() -> None:
         content=content,
         extra={"성공": f"{len(results)}개", "실패": f"{len(errors)}개", "run_id": run_id},
     )
+
+    # 전체 실패(성공 0건) 시 텔레그램 긴급 알림
+    if not results and errors:
+        tg.send_batch_failure(
+            run_id=run_id,
+            target=target,
+            succeeded=0,
+            errors=errors,
+        )
 
     print(f"\n[BATCH] 완료: {len(results)}개 성공, {len(errors)}개 실패")
     db.close()

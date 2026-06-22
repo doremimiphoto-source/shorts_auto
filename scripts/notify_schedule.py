@@ -18,46 +18,64 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 if sys.stdout is None:
-    sys.stdout = open("nul", "w", encoding="utf-8")
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
 else:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
+import os
+
 KST = timezone(timedelta(hours=9))
-TASKS = [
-    ("ShortsAuto_0700", "07:00"),
-    ("ShortsAuto_1530", "15:30"),
-    ("ShortsAuto_1800", "18:00"),
-    ("ShortsAuto_2200", "22:00"),
+
+# launchd 레이블 → 표시 시각 매핑
+LAUNCHD_LABELS = [
+    ("com.shortsauto.batch_0700", "07:00"),
+    ("com.shortsauto.batch_1530", "14:30"),
+    ("com.shortsauto.batch_1800", "17:30"),
+    ("com.shortsauto.batch_2000", "21:00"),
 ]
 
 
-def _task_info(task_name: str) -> dict:
-    """schtasks로 태스크 최근 실행 결과 조회."""
+def _launchctl_info(label: str) -> dict:
+    """launchctl list로 서비스 상태 조회."""
     try:
         out = subprocess.run(
-            ["schtasks", "/query", "/tn", f"\\{task_name}", "/fo", "LIST", "/v"],
-            capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace",
+            ["launchctl", "list", label],
+            capture_output=True, text=True, timeout=5,
         ).stdout
-        result, last_run = "", ""
+        info: dict = {}
         for line in out.splitlines():
-            if "Last Result" in line:
-                result = line.split(":", 1)[-1].strip()
-            if "Last Run Time" in line:
-                last_run = line.split(":", 1)[-1].strip()
-        return {"result": result, "last_run": last_run}
+            if "=" in line:
+                k, _, v = line.partition("=")
+                info[k.strip().strip('"')] = v.strip().strip('";')
+        return info
     except Exception:
-        return {"result": "?", "last_run": "?"}
+        return {}
 
 
-def _result_icon(code: str) -> str:
-    if code == "0":
-        return "✅"
-    if code in ("267011", "267014"):
-        return "⏳"
-    return "❌"
+def _label_status(label: str) -> tuple[str, str]:
+    """(icon, status_text) 반환."""
+    try:
+        result = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] == label:
+                pid, exit_code = parts[0], parts[1]
+                if pid != "-":
+                    return "🟢", f"실행 중 (PID {pid})"
+                if exit_code == "0":
+                    return "✅", "정상 완료"
+                if exit_code == "-1":
+                    return "⏳", "대기 중"
+                return "❌", f"종료코드 {exit_code}"
+        return "⚪", "미등록"
+    except Exception:
+        return "❓", "확인 불가"
 
 
 def main() -> None:
@@ -72,27 +90,17 @@ def main() -> None:
     now = datetime.now(KST)
     today_str = now.strftime("%Y-%m-%d (%a)")
 
-    # ── 태스크 스케줄 현황 ─────────────────────────────────────────
+    # ── launchd 서비스 현황 ────────────────────────────────────────
     schedule_lines = []
-    for task_name, time_str in TASKS:
-        info = _task_info(task_name)
-        icon = _result_icon(info["result"])
-        last = info["last_run"]
-        # 마지막 실행일이 오늘이면 "오늘 HH:MM", 아니면 날짜만
-        try:
-            dt = datetime.strptime(last[:10], "%Y-%m-%d")
-            if dt.date() == now.date():
-                last_label = f"오늘 {last[11:16]}"
-            else:
-                last_label = last[:10]
-        except Exception:
-            last_label = last[:16] if last else "-"
-        schedule_lines.append(f"{icon} **{time_str}** `{task_name}` — 직전 실행: {last_label}")
+    for label, time_str in LAUNCHD_LABELS:
+        icon, status = _label_status(label)
+        schedule_lines.append(f"{icon} **{time_str}** `{label.split('.')[-1]}` — {status}")
 
     schedule_text = "\n".join(schedule_lines)
 
     # ── 전날 업로드 실적 ───────────────────────────────────────────
-    db = open_database(settings.project_path(settings.section("database").get("path", "data/shorts.db")))
+    db_path = settings.project_path(settings.section("database").get("path", "data/shorts.db"))
+    db = open_database(db_path)
     repos = Repositories(db)
 
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -109,14 +117,11 @@ def main() -> None:
     daily_target = int(settings.section("pipeline").get("daily_target_count", 4))
     yesterday_count = len(yesterday_uploads)
     if yesterday_count >= daily_target:
-        perf_icon = "✅"
-        perf_status = f"{yesterday_count}/{daily_target}개 (목표 달성)"
+        perf_icon, perf_status = "✅", f"{yesterday_count}/{daily_target}개 (목표 달성)"
     elif yesterday_count > 0:
-        perf_icon = "⚠️"
-        perf_status = f"{yesterday_count}/{daily_target}개 (목표 미달)"
+        perf_icon, perf_status = "⚠️", f"{yesterday_count}/{daily_target}개 (목표 미달)"
     else:
-        perf_icon = "❌"
-        perf_status = f"0/{daily_target}개 (업로드 없음)"
+        perf_icon, perf_status = "❌", f"0/{daily_target}개 (업로드 없음)"
 
     if yesterday_uploads:
         perf_lines = []
@@ -135,11 +140,11 @@ def main() -> None:
     # ── YouTube quota 잔여 ─────────────────────────────────────────
     try:
         used = repos.uploads.quota_used_today(oauth_client_name="default")
-        daily = 10000
+        daily_q = 10000
         cost = 1600
         margin = 1000
-        remaining_uploads = max(0, (daily - used - margin) // cost)
-        quota_text = f"오늘 quota: `{used:,}/{daily:,}` 사용 — 업로드 가능 **{remaining_uploads}개** 남음"
+        remaining_uploads = max(0, (daily_q - used - margin) // cost)
+        quota_text = f"오늘 quota: `{used:,}/{daily_q:,}` 사용 — 업로드 가능 **{remaining_uploads}개** 남음"
     except Exception as e:
         quota_text = f"quota 조회 실패: {e}"
 
@@ -156,7 +161,7 @@ def main() -> None:
         title=f"📅 {today_str} 배치 스케줄",
         level="INFO",
         content=content,
-        extra={"예정 배치": f"{len(TASKS)}회", "알림 시각": now.strftime("%H:%M KST")},
+        extra={"예정 배치": f"{len(LAUNCHD_LABELS)}회", "알림 시각": now.strftime("%H:%M KST")},
     )
     print(f"[notify_schedule] 알림 발송 완료 {now.strftime('%H:%M')}")
 
