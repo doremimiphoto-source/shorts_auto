@@ -76,10 +76,12 @@ _EMPH_HOOK  = (r"{\c&H0066E0FF&\fs102\blur0}", r"{\c&H00FFFFFF&\fs92\blur0}")
 _EMPH_BODY  = (r"{\c&H0066E0FF&\fs80\blur0}",  r"{\c&H00FFFFFF&\fs70\blur0}")
 _EMPH_TWIST = (r"{\c&H00FFFFFF&\fs98\blur0}",  r"{\c&H0066E0FF&\fs88\blur0}")
 
-# Gowun Dodum 880px 실질 안전폭 기준 최대 한글 수/줄 (fontSize × 0.85 ≈ charWidth, 이모지 포함 여유)
-_MAX_KO_HOOK  = 10   # 92px → 880/(92×0.85) ≈ 11.2
-_MAX_KO_BODY  = 12   # 70px → 880/(70×0.85) ≈ 14.8
-_MAX_KO_TWIST = 10   # 88px → 880/(88×0.85) ≈ 11.8
+# Gowun Dodum 880px 실질 안전폭 기준 최대 시각폭 단위/줄
+# 시각폭(visual width): 한글=1.0, ASCII/숫자/공백=0.55, 기타=1.1
+# 실제 렌더 너비 = fontSize × 0.9 × visual_width → 이 값 이하이면 안전
+_MAX_VW_HOOK  = 9.5  # 92px → 880/(92×0.9) ≈ 10.6, 여유 1.1 → 9.5
+_MAX_VW_BODY  = 11.0 # 70px → 880/(70×0.9) ≈ 14.0, 숫자·공백 포함 여유 → 11
+_MAX_VW_TWIST = 9.5  # 88px → 880/(88×0.9) ≈ 11.1, 여유 → 9.5
 
 
 import re as _re
@@ -99,40 +101,46 @@ def _strip_cjk(text: str) -> str:
 
 
 def _ko_len(text: str) -> int:
-    """한글 음절(가-힣) 수만 반환."""
+    """한글 음절(가-힣) 수만 반환 (레거시 SRT용)."""
     return sum(1 for c in text if "가" <= c <= "힣")
 
 
-# 한글 조사 음절 — 단어 끝에 오면 자연스러운 분리 우선 지점
-# '서'(에서), '로'(으로), '을/를', '은/는', '이/가', '와/과', '도', '의', '등', '만'
-_KO_PARTICLES = frozenset("로을를은는가와과도의등")  # 이/서는 어간에도 흔해 제외
+def _vw(text: str) -> float:
+    """화면 표시 시각폭 추정: 한글=1.0, ASCII/숫자/공백=0.55, 이모지·기타=1.1.
+
+    `_ko_len`과 달리 숫자·영문·공백도 폭에 반영하므로
+    혼합 텍스트(예: '30분마다 10분간')의 실제 렌더 너비를 정확히 추정한다.
+    """
+    w = 0.0
+    for c in text:
+        if "가" <= c <= "힣":
+            w += 1.0
+        elif ord(c) < 128:
+            w += 0.55
+        else:
+            w += 1.1
+    return w
 
 
-def _word_ko_len(word: str) -> int:
-    """단어 내 한글 음절 수."""
-    return sum(1 for c in word if "가" <= c <= "힣")
-
-
-def _wrap_text_lines(text: str, max_ko_per_line: int, max_lines: int = 3) -> str:
-    r"""한국어 단어 단위 자연스러운 줄바꿈 (최대 max_lines줄).
+def _wrap_text_lines(text: str, max_vw_per_line: float, max_lines: int = 3) -> str:
+    r"""한국어 단어 단위 자연스러운 줄바꿈 (최대 max_lines줄, 최대 3줄).
 
     분리 우선순위:
     1. 문장 부호(다/요/!?.) 뒤 → 자연 문장 분리
-    2. 단어 그리디 묶기: max_ko_per_line 이내 최대한 채우되
-       현재 줄의 마지막 단어가 조사 끝이면 거기서 분리 우선
+    2. 단어 그리디 묶기: max_vw_per_line 이내 최대한 채움
     3. 공백 없으면 강제 mid 분할
     """
     import re
     text = text.strip()
-    if not text or _ko_len(text) <= max_ko_per_line or max_lines <= 1:
+    if not text or _vw(text) <= max_vw_per_line or max_lines <= 1:
         return text
 
     # 1순위: 문장 부호 뒤 자연 분리
     for m in re.finditer(r"(?<=[다요!?.])\s+", text):
         line1 = text[: m.start()].strip()
         rest  = text[m.end():].strip()
-        if line1 and rest and _ko_len(line1) <= max_ko_per_line:
-            return line1 + r"\N" + _wrap_text_lines(rest, max_ko_per_line, max_lines - 1)
+        if line1 and rest and _vw(line1) <= max_vw_per_line:
+            return line1 + r"\N" + _wrap_text_lines(rest, max_vw_per_line, max_lines - 1)
 
     # 2순위: 단어 그리디 묶기
     words = text.split()
@@ -142,26 +150,26 @@ def _wrap_text_lines(text: str, max_ko_per_line: int, max_lines: int = 3) -> str
 
     lines: list[str] = []
     current: list[str] = []
-    current_ko = 0
+    current_vw = 0.0
 
-    for idx, word in enumerate(words):
-        wko = _word_ko_len(word)
+    for word in words:
+        wvw = _vw(word)
+        space_vw = 0.55 if current else 0.0
 
-        if current and current_ko + wko > max_ko_per_line:
+        if current and current_vw + space_vw + wvw > max_vw_per_line:
+            if len(lines) >= max_lines - 1:
+                # 마지막 줄 초과 → 더 이상 단어 추가 중단 (3줄 상한 유지)
+                break
             lines.append(" ".join(current))
             current = [word]
-            current_ko = wko
-
-            if len(lines) >= max_lines - 1:
-                remaining = " ".join(words[idx + 1:])
-                if remaining:
-                    current.append(remaining)
-                break
+            current_vw = wvw
         else:
+            if current:
+                current_vw += space_vw
             current.append(word)
-            current_ko += wko
+            current_vw += wvw
 
-    if current:
+    if current and len(lines) < max_lines:
         lines.append(" ".join(current))
 
     return r"\N".join(lines) if lines else text
@@ -219,15 +227,15 @@ def make_styled_subtitles(
 
     entries: list[tuple[str, str, float]] = []
 
-    kw_hook = _wrap_text_lines(hook, _MAX_KO_HOOK)
+    kw_hook = _wrap_text_lines(hook, _MAX_VW_HOOK)
     if kw_hook:
         kw_hook = _apply_word_emphasis(kw_hook, emph_words, eh_o, eh_c)
         entries.append((th, kw_hook, len(hook)))
 
     if body:
         b1, b2 = _split_body_sentences(body)
-        kw_b1 = _wrap_text_lines(b1, _MAX_KO_BODY)
-        kw_b2 = _wrap_text_lines(b2, _MAX_KO_BODY)
+        kw_b1 = _wrap_text_lines(b1, _MAX_VW_BODY)
+        kw_b2 = _wrap_text_lines(b2, _MAX_VW_BODY)
         half_w = len(body) * 0.5
         if kw_b1:
             kw_b1 = _apply_word_emphasis(kw_b1, emph_words, eb_o, eb_c)
@@ -236,7 +244,7 @@ def make_styled_subtitles(
             kw_b2 = _apply_word_emphasis(kw_b2, emph_words, eb_o, eb_c)
             entries.append((tb, kw_b2, half_w))
 
-    kw_twist = _wrap_text_lines(twist, _MAX_KO_TWIST)
+    kw_twist = _wrap_text_lines(twist, _MAX_VW_TWIST)
     if kw_twist:
         kw_twist = _apply_word_emphasis(kw_twist, emph_words, et_o, et_c)
         entries.append((tt, kw_twist, len(twist)))
@@ -263,7 +271,7 @@ def make_styled_subtitles(
     full_end = _ass_time(audio_duration)
     title_text = _strip_ko_clean((script.get("title") or "").strip())
     if title_text:
-        wrapped_title = _wrap_text_lines(title_text, max_ko_per_line=9)
+        wrapped_title = _wrap_text_lines(title_text, max_vw_per_line=9.0)
         extra.append(f"Dialogue: 1,0:00:00.00,{full_end},Title,,0,0,0,,{ta}{wrapped_title}\n")
 
     _write_ass(out_ass, segments, extra_lines=extra)

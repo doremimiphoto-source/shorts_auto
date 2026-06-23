@@ -37,19 +37,29 @@ def _parse_ts(ts: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def _rewrap(text: str, cpl: int = 19) -> str:
+def _rewrap(text: str, cpl: float = 11.0) -> str:
+    """시각폭 기준 줄바꿈 (최대 3줄). cpl = _MAX_VW_BODY 기준."""
+    from .whisper_engine import _vw  # 순환 import 없음 (같은 패키지)
     words = text.replace("\\N", " ").split(" ")
-    lines, cur = [], ""
+    lines: list[str] = []
+    cur: list[str] = []
+    cur_vw = 0.0
     for w in words:
-        cand = (cur + " " + w).strip() if cur else w
-        if len(cand) <= cpl:
-            cur = cand
+        wvw = _vw(w)
+        space_vw = 0.55 if cur else 0.0
+        if cur and cur_vw + space_vw + wvw > cpl:
+            lines.append(" ".join(cur))
+            if len(lines) >= 3:  # 최대 3줄
+                break
+            cur = [w]
+            cur_vw = wvw
         else:
             if cur:
-                lines.append(cur)
-            cur = w
-    if cur:
-        lines.append(cur)
+                cur_vw += space_vw
+            cur.append(w)
+            cur_vw += wvw
+    if cur and len(lines) < 3:
+        lines.append(" ".join(cur))
     return "\\N".join(lines)
 
 
