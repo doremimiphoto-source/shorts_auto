@@ -1,9 +1,10 @@
-"""edge-tts 엔진 (감성 명언 채널 주력 TTS).
+"""edge-tts 엔진 (공부 팁 채널 주력 TTS).
 
 Microsoft Azure Neural TTS를 edge-tts 비공식 wrapper로 호출.
-MeloTTS 대비 훨씬 자연스러운 한국어 발음 — 감성 콘텐츠에 최적.
+SSML + cheerful 스타일로 가장 인간에 가까운 발화를 구현한다.
 
-- rate 설정으로 발화 속도 조절 (기본 -15%: 명언 여운 확보)
+- SSML express-as: cheerful 스타일로 자연스러운 억양·감정 표현
+- rate/pitch: 자연 발화 속도·음역대 (0%, 0Hz) — 인위적 가속 제거
 - 연속 실패 5회 → is_available() False (차단 감지, FR-3.7)
 - edge-tts 설치: pip install edge-tts
 """
@@ -11,6 +12,7 @@ MeloTTS 대비 훨씬 자연스러운 한국어 발음 — 감성 콘텐츠에 �
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import subprocess
 import time
 from pathlib import Path
@@ -18,19 +20,48 @@ from pathlib import Path
 from .base import SynthResult, TTSEngine, _concat_audio_with_gaps
 
 # 실제 제공 한국어 음성: SunHiNeural(여), InJoonNeural(남), HyunsuMultilingualNeural(남)
-# 공부 팁 채널: 여자 중학생 수준의 밝고 자연스러운 톤 — SunHiNeural 단독 사용
 _VOICE_RATE: dict[str, str] = {
-    "ko-KR-SunHiNeural":               "+8%",    # 활기차고 빠른 10대 중학생 발화 속도
-    "ko-KR-InJoonNeural":              "-8%",    # 자연스러운 남성 (폴백용)
-    "ko-KR-HyunsuMultilingualNeural":  "-5%",    # 다국어 남성 (폴백용)
+    "ko-KR-SunHiNeural":               "+0%",   # 자연스러운 발화 속도
+    "ko-KR-InJoonNeural":              "-8%",
+    "ko-KR-HyunsuMultilingualNeural":  "-5%",
 }
 
-# 피치 조정 — cheerful 스타일과 함께 사용: +14Hz로 자연스러운 중학생 여성 음역대 유지
 _VOICE_PITCH: dict[str, str] = {
-    "ko-KR-SunHiNeural":               "+14Hz",  # cheerful 스타일이 에너지 추가 → 과잉 방지
+    "ko-KR-SunHiNeural":               "+0Hz",  # 자연스러운 음역대
     "ko-KR-InJoonNeural":              "-2Hz",
     "ko-KR-HyunsuMultilingualNeural":  "+0Hz",
 }
+
+# SSML 스타일 — (style_name, styledegree)
+# styledegree: 0=neutral, 1=원본, 0~2 범위. 0.8 = 자연스러운 감정 표현
+_VOICE_STYLE: dict[str, tuple[str, float]] = {
+    "ko-KR-SunHiNeural": ("cheerful", 0.8),
+}
+
+
+def _to_ssml(text: str, voice: str, rate: str, pitch: str) -> str:
+    """plain text → SSML with optional express-as style and prosody.
+
+    \\n → <break time='400ms'/> 변환으로 문장 간 자연스러운 쉼 유지.
+    XML 특수문자(&, <, >)는 이스케이프 처리.
+    """
+    safe = _html.escape(text, quote=False).replace("\n", "<break time='400ms'/>")
+    style_info = _VOICE_STYLE.get(voice)
+    if style_info:
+        style_name, degree = style_info
+        inner = (
+            f"<mstts:express-as style='{style_name}' styledegree='{degree}'>"
+            f"<prosody rate='{rate}' pitch='{pitch}'>{safe}</prosody>"
+            f"</mstts:express-as>"
+        )
+    else:
+        inner = f"<prosody rate='{rate}' pitch='{pitch}'>{safe}</prosody>"
+    return (
+        "<speak version='1.0' "
+        "xmlns='http://www.w3.org/2001/10/synthesis' "
+        "xmlns:mstts='https://www.w3.org/2001/mstts' "
+        f"xml:lang='ko-KR'><voice name='{voice}'>{inner}</voice></speak>"
+    )
 
 _DEFAULT_VOICES = list(_VOICE_RATE.keys())
 _FAIL_THRESHOLD = 5
@@ -86,7 +117,8 @@ class EdgeEngine(TTSEngine):
 
         async def _do() -> list[dict]:
             communicate = edge_tts.Communicate(
-                text, voice, boundary="WordBoundary", rate=rate, pitch=pitch,
+                _to_ssml(text, voice, rate, pitch),
+                voice, boundary="WordBoundary", rate="+0%", pitch="+0Hz",
             )
             boundaries: list[dict] = []
             audio_chunks: list[bytes] = []
@@ -164,7 +196,8 @@ class EdgeEngine(TTSEngine):
 
             async def _stream_seg(t=text, p=seg_mp3):
                 communicate = edge_tts.Communicate(
-                    t, voice, boundary="WordBoundary", rate=rate, pitch=pitch,
+                    _to_ssml(t, voice, rate, pitch),
+                    voice, boundary="WordBoundary", rate="+0%", pitch="+0Hz",
                 )
                 boundaries: list[dict] = []
                 chunks: list[bytes] = []

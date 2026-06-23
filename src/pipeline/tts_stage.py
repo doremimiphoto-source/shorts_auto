@@ -129,13 +129,12 @@ def run(ctx: PipelineContext, *, script_id: int) -> int:
             key=lambda k: int(k[6:])
         )
         if body_s_keys:
-            body_agg = {
+            # body_s* 개별 타이밍 보존 — subtitle 단계에서 정밀 분할에 사용
+            # (삭제하지 않음: _apply_segment_timing이 exact split point에 활용)
+            segment_times["body"] = {
                 "start": segment_times[body_s_keys[0]]["start"],
                 "end":   segment_times[body_s_keys[-1]]["end"],
             }
-            for k in body_s_keys:
-                del segment_times[k]
-            segment_times["body"] = body_agg
             for wb in word_boundaries:
                 if _re.match(r"^body_s\d+$", wb.get("segment", "")):
                     wb["segment"] = "body"

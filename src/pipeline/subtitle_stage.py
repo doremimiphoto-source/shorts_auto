@@ -326,8 +326,17 @@ def _apply_segment_timing(
 ) -> None:
     """세그먼트 타이밍 사이드카가 있을 때 정확한 구간으로 ASS 타임라인 덮어쓰기.
 
-    body는 내부 silence를 찾아 body_part1/body_part2로 분리.
+    body 분할 우선순위:
+    1. body_s* 개별 문장 타이밍 (TTS 단계에서 보존한 exact timing) → 오차 0
+    2. body 내 silence 감지로 분할점 추정 (body_s* 없을 때)
+    3. 균등 분할 fallback
     """
+    # body_s* 개별 문장 타이밍 (tts_stage가 보존한 정밀 타이밍)
+    body_s_keys = sorted(
+        [k for k in segment_times if re.match(r"^body_s\d+$", k)],
+        key=lambda k: int(k[6:]),
+    )
+
     raw = path.read_text("utf-8").splitlines()
     header: list[str] = []
     dlgs: list[dict] = []
@@ -354,8 +363,6 @@ def _apply_segment_timing(
                      "hd": f[:9], "ovr": ovr, "body": body_text})
 
     non_title = [d for d in dlgs if d["layer"] != "1"]
-    # segment order inferred from position: hook(1), body_pt1(1+), body_pt2(opt), twist(last)
-    # count body segments = total non_title - (1 if hook in times) - (1 if twist in times)
     n_hook  = 1 if "hook"  in segment_times else 0
     n_twist = 1 if "twist" in segment_times else 0
     n_body  = max(0, len(non_title) - n_hook - n_twist)
@@ -365,7 +372,7 @@ def _apply_segment_timing(
     for _ in range(n_body): seg_names.append("body")
     if n_twist: seg_names.append("twist")
 
-    body_idx = 0  # which body sub-segment we're on
+    body_idx = 0
 
     for i, dlg in enumerate(non_title):
         if i >= len(seg_names):
@@ -381,8 +388,17 @@ def _apply_segment_timing(
             if n_body == 1:
                 dlg["t0"] = body_start
                 dlg["t1"] = body_end
+            elif body_s_keys and n_body == 2:
+                # ① 정밀: body_s* 개별 문장 타이밍으로 exact 분할 (오차 0)
+                mid_s = max(1, len(body_s_keys) // 2)
+                if body_idx == 0:
+                    dlg["t0"] = round(segment_times[body_s_keys[0]]["start"],       3)
+                    dlg["t1"] = round(segment_times[body_s_keys[mid_s - 1]]["end"], 3)
+                else:
+                    dlg["t0"] = round(segment_times[body_s_keys[mid_s]]["start"],   3)
+                    dlg["t1"] = round(segment_times[body_s_keys[-1]]["end"],         3)
             else:
-                # Split body by finding a silence within body range
+                # ② silence 기반 분할
                 body_sils = [(ss, se) for ss, se in silences
                              if body_start < ss < body_end - 0.1]
                 if body_sils and n_body == 2:
@@ -394,7 +410,7 @@ def _apply_segment_timing(
                         dlg["t0"] = round(mid_sil[1], 3)
                         dlg["t1"] = body_end
                 else:
-                    # fallback: split evenly (-0.1 제거 — 자막이 오디오보다 일찍 사라지는 현상 방지)
+                    # ③ 균등 분할 fallback
                     step = (body_end - body_start) / n_body
                     dlg["t0"] = round(body_start + body_idx * step, 3)
                     dlg["t1"] = round(body_start + (body_idx + 1) * step, 3)
