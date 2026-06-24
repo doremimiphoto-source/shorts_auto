@@ -165,7 +165,18 @@ IA_QUERIES_BY_MOOD = {
     "sad": ["melancholy piano", "elegy strings", "sad ambient music", "emotional piano solo"],
     "calm": ["ambient quiet", "soft piano slow", "peaceful nature sounds", "gentle acoustic guitar"],
     "twist": ["dramatic reveal", "cinematic orchestral", "epic orchestral moment", "soaring strings music"],
-    "focus": ["lo-fi study music", "ambient focus concentration", "soft background study", "quiet piano looping", "piano solo gentle", "acoustic meditation", "relaxing piano instrumental", "new age piano solo"],
+    "focus": [
+        "gentle piano solo short",
+        "soft piano background instrumental",
+        "ambient study music single track",
+        "concentration background quiet piano",
+        "meditation background piano gentle",
+        "lofi piano calm short track",
+        "study background ambient minimal",
+        "quiet instrumental focus short",
+        "peaceful piano background study",
+        "solo piano meditation background",
+    ],
     "upbeat": ["upbeat positive music", "cheerful light acoustic", "happy background music", "bright motivational instrumental"],
 }
 
@@ -369,10 +380,10 @@ _IA_TITLE_BLACKLIST = (
     "librivox", "audiobook", "audio book", "the adventures of",
     "podcast", "lecture", "sermon",
 )
-# BGM 1곡 기준 합리 상한 (60초 mp3 ≤ ~3MB, 길어도 10MB 이내)
-_IA_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024
-# 음원 길이 상한 (초). 30초~5분 사이 곡만 BGM 재료로 적합
-_IA_MAX_DURATION_SEC = 300
+# BGM 1곡 기준 합리 상한 (60초 mp3 ≤ ~3MB, 5분 이내 트랙도 허용)
+_IA_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
+# 음원 길이 상한 (초). 20초~6분 사이 곡만 BGM 재료로 적합
+_IA_MAX_DURATION_SEC = 360
 _IA_MIN_DURATION_SEC = 20
 
 
