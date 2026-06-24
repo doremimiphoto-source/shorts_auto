@@ -62,7 +62,7 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
                     bg_video = selector.select_bg_video()
                 ctx.log.info("bg_source", source="ai_fallback", path=bg_video.name)
 
-            bgm = selector.select_bgm()
+            bgm = selector.select_bgm(mood=_bgm_mood_for(script))
         except FileNotFoundError as e:
             raise StageSkipped(f"에셋 풀 비어 있음: {e}") from e
 
@@ -244,6 +244,35 @@ def _select_content_bg(bg_dir: Path, script: dict | None, au) -> Path | None:
         if interior:
             return random.choice(interior)
     return None
+
+
+def _bgm_mood_for(script: dict | None) -> str | None:
+    """hook_pattern → BGM mood 매핑.
+
+    shock/number → tension (긴장감으로 클릭 유도)
+    confession    → calm   (공감·감성)
+    question      → focus  (집중·몰입)
+    comparison    → upbeat (경쾌한 A vs B 비교)
+    twist_preview → twist  (반전 예고)
+    second_person → upbeat (호명 → 경쾌하게)
+    dialogue      → calm   (대화형 → 편안하게)
+    timeline      → focus  (시간순 → 집중)
+    """
+    if script is None:
+        return None
+    pattern = (script.get("hook_pattern") or "").lower().strip()
+    _MAP = {
+        "shock":        "tension",
+        "number":       "tension",
+        "confession":   "calm",
+        "question":     "focus",
+        "comparison":   "upbeat",
+        "twist_preview":"twist",
+        "second_person":"upbeat",
+        "dialogue":     "calm",
+        "timeline":     "focus",
+    }
+    return _MAP.get(pattern)  # 미매핑 패턴은 None → AssetSelector 기본(랜덤) 선택
 
 
 def _validate_video(path: Path, *, expected: tuple[int, int], max_duration: int, ffprobe_bin: str = "ffprobe") -> bool:

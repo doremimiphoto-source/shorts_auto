@@ -234,7 +234,7 @@ rewriter:
       - dialogue         # 대화형
       - timeline         # 시간순 도입
       # lucky_charm: 실제 조회 27회 — 비활성화
-    no_repeat_window: 4                # 4개로 줄여 comparison 재등장 간격 단축
+    no_repeat_window: 2                # 2개 — comparison 재등장 간격 최소화
 
   content_filter:                      # FR-2.5
     block_keywords_path: prompts/block_keywords.txt
@@ -249,12 +249,12 @@ tts:
   melo:                                # MIT, MyShell.ai (사용자 선택)
     language: KR
     device: cpu
-    voices:                            # 15~30초 목표 → 빠른 속도 프로파일
-      - { id: kr_soft_default, speed: 1.10 }
-      - { id: kr_soft_slow,    speed: 1.05 }
-      - { id: kr_soft_normal,  speed: 1.15 }
-      - { id: kr_soft_brisk,   speed: 1.20 }
-      - { id: kr_soft_calm,    speed: 1.08 }
+    voices:                            # 자연 발화 속도 — 인위적 가속 제거로 자연스러움 향상
+      - { id: kr_soft_default, speed: 1.00 }
+      - { id: kr_soft_slow,    speed: 1.00 }
+      - { id: kr_soft_normal,  speed: 1.02 }
+      - { id: kr_soft_brisk,   speed: 1.05 }
+      - { id: kr_soft_calm,    speed: 1.00 }
 
   piper:                               # 한국어 미지원 — 영어용으로만 사용 가능 (보관)
     enabled: false
@@ -318,7 +318,7 @@ renderer:
   bgm:
     pool_dir: assets/bgm
     min_pool_size: 30                  # FR-5.5
-    duck_db: -18                       # BGM 더킹 레벨 — -22에서 완화, 배경음 존재감 유지 (FR-5.3)
+    duck_db: -22                       # BGM 더킹 레벨 — -22dB, composer.py 기본값과 일치 (FR-5.3)
     blacklist_path: data/bgm_blacklist.json
     content_id_check_after_minutes: 10 # 업로드 후 검사 (A10)
 
