@@ -233,16 +233,16 @@ def make_styled_subtitles(
         entries.append((th, kw_hook, len(hook)))
 
     if body:
-        b1, b2 = _split_body_sentences(body)
-        kw_b1 = _wrap_text_lines(b1, _MAX_VW_BODY)
-        kw_b2 = _wrap_text_lines(b2, _MAX_VW_BODY)
-        half_w = len(body) * 0.5
-        if kw_b1:
-            kw_b1 = _apply_word_emphasis(kw_b1, emph_words, eb_o, eb_c)
-            entries.append((tb, kw_b1, half_w))
-        if kw_b2:
-            kw_b2 = _apply_word_emphasis(kw_b2, emph_words, eb_o, eb_c)
-            entries.append((tb, kw_b2, half_w))
+        # 문장 단위로 자막 블록 분리 — 첫째/둘째/셋째 각각 별도 블록
+        body_sents = _split_body_to_sentences(body)
+        per_w = len(body) / len(body_sents)
+        for sent in body_sents:
+            kw_sent = _wrap_text_lines(sent, _MAX_VW_BODY)
+            if not kw_sent:
+                continue
+            kw_sent = _insert_ordinal_breaks(kw_sent)
+            kw_sent = _apply_word_emphasis(kw_sent, emph_words, eb_o, eb_c)
+            entries.append((tb, kw_sent, per_w))
 
     kw_twist = _wrap_text_lines(twist, _MAX_VW_TWIST)
     if kw_twist:
@@ -278,16 +278,58 @@ def make_styled_subtitles(
     return SubtitleResult(srt_path=out_ass, segments=segments)
 
 
-def _split_body_sentences(body: str) -> tuple[str, str]:
-    """body를 문장 단위로 전반/후반 2그룹으로 분리."""
+def _split_body_to_sentences(body: str) -> list[str]:
+    """body를 문장 단위로 분리 — 각 문장이 하나의 자막 블록.
+
+    최대 4개 블록. 4개 초과 시 절반씩 묶음.
+    쉼표로 이어진 한 문장에 둘째/셋째가 포함된 경우에도 분리.
+    """
     import re
-    sentences = re.split(r"(?<=[다요!?.])\s+", body.strip())
-    sentences = [s.strip() for s in sentences if s.strip()]
-    if len(sentences) <= 1:
-        mid = len(body) // 2
-        return body[:mid].strip(), body[mid:].strip()
-    mid = max(1, len(sentences) // 2)
-    return " ".join(sentences[:mid]), " ".join(sentences[mid:])
+    sents = re.split(r"(?<=[다요!?.])\s+", body.strip())
+    sents = [s.strip() for s in sents if s.strip()]
+    if not sents:
+        return [body]
+    # 한 문장 안에 둘째/셋째/넷째가 있으면 서수어 앞 쉼표 기준으로 추가 분리
+    if len(sents) == 1:
+        _ord_re = re.compile(r",\s*(둘째|셋째|넷째)")
+        if _ord_re.search(sents[0]):
+            parts = _ord_re.split(sents[0])
+            # re.split(capturing) → [before, ordinal1, between1, ordinal2, between2, ...]
+            # 짝수 인덱스: 텍스트 / 홀수 인덱스: 서수어
+            merged: list[str] = []
+            if parts[0].strip():
+                merged.append(parts[0].strip())
+            for j in range(1, len(parts), 2):
+                ordinal = parts[j]
+                after   = parts[j + 1].strip().lstrip(",").strip() if j + 1 < len(parts) else ""
+                merged.append((ordinal + ", " + after) if after else ordinal)
+            sents = [s for s in merged if s]
+    if len(sents) <= 4:
+        return sents
+    mid = len(sents) // 2
+    return [" ".join(sents[:mid]), " ".join(sents[mid:])]
+
+
+def _insert_ordinal_breaks(text: str) -> str:
+    r"""자막 텍스트 내 둘째/셋째/넷째 앞에 \N 삽입 (앞에 다른 텍스트 있을 때만).
+
+    예: "하고, 둘째," → "하고,\N둘째,"
+    """
+    import re
+    _pat = re.compile(r"(\S)\s+(둘째|셋째|넷째)")
+    def _repl(m: re.Match) -> str:
+        return m.group(1) + r"\N" + m.group(2)
+    lines = text.split(r"\N")
+    return r"\N".join(_pat.sub(_repl, ln) for ln in lines)
+
+
+def _split_body_sentences(body: str) -> tuple[str, str]:
+    """[레거시] body를 2그룹으로 분리. make_styled_subtitles에서는 미사용."""
+    sents = _split_body_to_sentences(body)
+    if len(sents) == 1:
+        return sents[0], ""
+    mid = max(1, len(sents) // 2)
+    return " ".join(sents[:mid]), " ".join(sents[mid:])
 
 
 def _key_phrase(text: str, max_chars: int) -> str:

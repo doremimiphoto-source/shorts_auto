@@ -22,7 +22,7 @@ from .context import PipelineContext, StageError, stage_timer
 # ── 자막 싱크 후처리 헬퍼 ─────────────────────────────────────────────────────
 
 _EMPH_RE  = re.compile(r"^(첫째|둘째|셋째|이대로만)")
-_SPLIT_RE = re.compile(r"\.\s+(첫째|둘째|셋째),")
+_SPLIT_RE = re.compile(r"[.,。]\s*(첫째|둘째|셋째)")
 
 
 def _ass_ts(sec: float) -> str:
@@ -385,32 +385,45 @@ def _apply_segment_timing(
         if seg == "body":
             body_start = times["start"]
             body_end   = times["end"]
+            n_segs = len(body_s_keys)
             if n_body == 1:
                 dlg["t0"] = body_start
                 dlg["t1"] = body_end
-            elif body_s_keys and n_body == 2:
-                # ① 정밀: body_s* 개별 문장 타이밍으로 exact 분할 (오차 0)
-                mid_s = max(1, len(body_s_keys) // 2)
-                if body_idx == 0:
-                    dlg["t0"] = round(segment_times[body_s_keys[0]]["start"],       3)
-                    dlg["t1"] = round(segment_times[body_s_keys[mid_s - 1]]["end"], 3)
-                else:
-                    dlg["t0"] = round(segment_times[body_s_keys[mid_s]]["start"],   3)
-                    dlg["t1"] = round(segment_times[body_s_keys[-1]]["end"],         3)
+            elif body_s_keys and n_segs == n_body:
+                # ① 정밀 1:1: body_s* 개수 = 자막 블록 수 (문장당 1블록, 오차 0)
+                dlg["t0"] = round(segment_times[body_s_keys[body_idx]]["start"], 3)
+                dlg["t1"] = round(segment_times[body_s_keys[body_idx]]["end"],   3)
+            elif body_s_keys and n_segs > n_body:
+                # ② 정밀 N:M: body_s* N개를 n_body 블록에 균등 배분
+                segs_per_block = n_segs / n_body
+                start_i = round(body_idx * segs_per_block)
+                end_i   = round((body_idx + 1) * segs_per_block) if body_idx < n_body - 1 else n_segs
+                end_i   = max(start_i + 1, min(end_i, n_segs))
+                dlg["t0"] = round(segment_times[body_s_keys[start_i]]["start"],   3)
+                dlg["t1"] = round(segment_times[body_s_keys[end_i - 1]]["end"],   3)
             else:
-                # ② silence 기반 분할
+                # ③ silence 기반 분할
                 body_sils = [(ss, se) for ss, se in silences
                              if body_start < ss < body_end - 0.1]
-                if body_sils and n_body == 2:
-                    mid_sil = min(body_sils, key=lambda s: abs(s[0] - (body_start + body_end) / 2))
+                if body_sils and n_body >= 2:
+                    # silence 기반: n_body-1개 분할점 추출
+                    sorted_sils = sorted(body_sils, key=lambda s: s[0])
+                    splits: list[float] = []
+                    for k in range(1, n_body):
+                        target = body_start + (body_end - body_start) * k / n_body
+                        best = min(sorted_sils, key=lambda s: abs(s[0] - target))
+                        splits.append((round(best[0], 3), round(best[1], 3)))
                     if body_idx == 0:
                         dlg["t0"] = body_start
-                        dlg["t1"] = round(mid_sil[0], 3)
-                    else:
-                        dlg["t0"] = round(mid_sil[1], 3)
+                        dlg["t1"] = splits[0][0]
+                    elif body_idx == n_body - 1:
+                        dlg["t0"] = splits[-1][1]
                         dlg["t1"] = body_end
+                    else:
+                        dlg["t0"] = splits[body_idx - 1][1]
+                        dlg["t1"] = splits[body_idx][0]
                 else:
-                    # ③ 균등 분할 fallback
+                    # ④ 균등 분할 fallback
                     step = (body_end - body_start) / n_body
                     dlg["t0"] = round(body_start + body_idx * step, 3)
                     dlg["t1"] = round(body_start + (body_idx + 1) * step, 3)
