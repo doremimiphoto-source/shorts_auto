@@ -65,19 +65,15 @@ def main() -> None:
     if args.ids:
         video_ids = args.ids
     else:
-        # 렌더 완료됐지만 최신 업로드 상태가 failed/queued이거나 업로드 레코드 없는 영상
+        # quota 초과로 queued 등록된 영상만 재시도 (failed는 제외 — 의도적 실패)
         rows = db.fetchall("""
             SELECT v.id
             FROM videos v
             WHERE v.video_path IS NOT NULL
               AND v.valid = 1
               AND (
-                  -- 업로드 레코드 없음 (렌더 후 quota 초과로 시도 못한 경우)
-                  NOT EXISTS (SELECT 1 FROM uploads u WHERE u.video_id = v.id)
-                  OR (
-                      SELECT status FROM uploads u WHERE u.video_id = v.id ORDER BY u.id DESC LIMIT 1
-                  ) IN ('failed', 'queued')
-              )
+                  SELECT status FROM uploads u WHERE u.video_id = v.id ORDER BY u.id DESC LIMIT 1
+              ) = 'queued'
             ORDER BY v.id DESC
             LIMIT 10
         """)
