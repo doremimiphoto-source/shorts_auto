@@ -53,7 +53,7 @@ class GeminiRewriter(Rewriter):
         try:
             self._client = genai.Client(
                 api_key=self.api_key,
-                http_options={"timeout": self.timeout_sec},
+                http_options={"timeout": self.timeout_sec * 1000},  # genai SDK v2.8+: timeout 단위=ms
             )
         finally:
             if _ssl is not None:
