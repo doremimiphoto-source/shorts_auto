@@ -28,4 +28,7 @@ cd "$PROJECT_DIR"
 # 랜덤 지연(30~119초)으로 동시 시작 시에도 락 경쟁을 회피한다.
 sleep $((30 + RANDOM % 90))
 
+# queued/failed 영상 우선 재업로드 (quota 여유 시)
+"$PYTHON_EXE" -m scripts.upload_pending 2>>"$LOG_FILE"
+
 "$PYTHON_EXE" -m scripts.run_batch --count 1 2>>"$LOG_FILE"
