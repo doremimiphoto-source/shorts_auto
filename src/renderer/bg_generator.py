@@ -137,24 +137,59 @@ _PROMPT_MAP: list[tuple[list[str], str]] = [
         "cinematic shallow depth-of-field, luxury editorial photography, "
         "no text no watermark, vertical portrait 9:16",
     ),
+    # ─ 수면·생활습관 (수면 > 밤새기 등)
+    (
+        ["수면", "밤새", "잠", "숙면", "기억 고정", "해마", "수면 시간"],
+        "serene Korean middle school girl sleeping peacefully at tidy desk, "
+        "soft warm bedside lamp glow, neat Korean textbooks and stationery beside her, "
+        "navy school uniform blazer folded on chair, "
+        "gentle bokeh moonlight through curtain window, "
+        "cinematic warm amber and soft blue color grade, "
+        "realistic Korean aesthetics, no text no watermark, vertical portrait 9:16",
+    ),
+    # ─ 멘탈·동기·슬럼프
+    (
+        ["슬럼프", "동기", "멘탈", "포기", "집중력", "의지"],
+        "determined Korean middle school student sitting at desk facing window at sunrise, "
+        "dramatic golden morning light streaming through window casting long shadows, "
+        "open Korean textbook and pencil in hand, navy school uniform, "
+        "motivational cinematic teal-gold color grade, depth of field bokeh, "
+        "realistic editorial photography, no text no watermark, vertical portrait 9:16",
+    ),
+    # ─ 스마트폰·SNS·디지털 습관
+    (
+        ["스마트폰", "SNS", "유튜브", "인스타", "디지털", "화면 시간"],
+        "Korean middle school student reluctantly putting down smartphone, "
+        "phone screen glow fading as textbook opens on wooden desk, "
+        "selective focus on Korean math textbook in foreground, "
+        "cool blue-to-warm amber color transition, cinematic shallow DOF, "
+        "no text no watermark, vertical portrait 9:16",
+    ),
+    # ─ 암기·기억법
+    (
+        ["암기", "기억", "망각 곡선", "두문자법", "연상법"],
+        "glowing neural network synapses in deep blue-violet bioluminescent cosmos, "
+        "Korean study notes and flashcards overlaid as transparent ghost images, "
+        "dramatic volumetric light, hyperrealistic CGI, "
+        "no text no watermark, vertical portrait 9:16",
+    ),
     # ─ 시험 대비 / 기출 / 기말 (범용)
     (
         ["기출", "기말", "시험 대비", "수행평가", "중간고사", "오답", "공부"],
-        "cinematic Korean student studying at premium night desk, "
-        "warm amber desk lamp casting dramatic rim light on open textbook, "
-        "blurred city night view through window bokeh, "
-        "moody teal-orange cinematic color grade, award-winning editorial photography, "
+        "Korean middle school student in navy blazer studying intensely at wooden desk at night, "
+        "warm amber desk lamp, Korean math and science textbooks open, "
+        "city apartment window bokeh in background, pencil in hand, "
+        "cinematic teal-orange color grade, photorealistic editorial style, "
         "no text no watermark, vertical portrait 9:16",
     ),
 ]
 
 _DEFAULT_PROMPT = (
-    "cinematic premium Korean study room at night, "
-    "warm amber desk lamp with dramatic rim lighting, "
-    "luxury stationery and open textbook in foreground, "
-    "city bokeh through window in background, "
-    "moody teal and warm gold cinematic color grade, "
-    "award-winning editorial photography, "
+    "Korean middle school girl in navy school uniform blazer studying at premium wooden desk, "
+    "warm amber desk lamp casting dramatic rim light on open Korean textbook, "
+    "neat stationery — mechanical pencil, highlighter, sticky notes, "
+    "soft bokeh apartment window with evening city lights in background, "
+    "cinematic teal and warm gold color grade, photorealistic editorial photography, "
     "no text no watermark, vertical portrait 9:16"
 )
 

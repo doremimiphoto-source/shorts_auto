@@ -62,6 +62,22 @@ class Database:
         sql = Path(schema_path).read_text(encoding="utf-8")
         conn = self.connect()
         conn.executescript(sql)
+        self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """기존 DB에 신규 컬럼을 안전하게 추가 (ADD COLUMN IF NOT EXISTS 대체)."""
+        _migrations = [
+            ("videos", "card_image_path", "TEXT"),
+        ]
+        existing: dict[str, set[str]] = {}
+        for table, col, dtype in _migrations:
+            if table not in existing:
+                cur = conn.execute(f"PRAGMA table_info({table})")
+                # row_factory returns dicts; PRAGMA table_info column name is "name"
+                existing[table] = {r["name"] for r in cur.fetchall()}
+            if col not in existing[table]:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
+                existing[table].add(col)
 
     # ---------- 트랜잭션 ----------
     @contextmanager

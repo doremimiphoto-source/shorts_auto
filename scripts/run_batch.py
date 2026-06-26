@@ -65,6 +65,7 @@ from src.notify.telegram_notifier import TelegramNotifier
 from src.pipeline import PipelineContext
 from src.pipeline.context import StageSkipped, StageError
 from src.pipeline.crawl_stage import run as run_crawl
+from src.pipeline.image_stage import run as run_image
 from src.pipeline.render_stage import run as run_render
 from src.pipeline.rewrite_stage import run as run_rewrite
 from src.pipeline.subtitle_stage import run as run_subtitle
@@ -202,6 +203,11 @@ def main() -> None:
             final_path = run_render(ctx, video_id=video_id)
             size_mb = round(final_path.stat().st_size / 1024 / 1024, 1)
             print(f"  [5/6] 렌더 완료 {final_path.name}  {size_mb} MB")
+
+            # 5-1. 카드 이미지 생성 (soft-fail: 실패해도 배치 계속)
+            card_path = run_image(ctx, video_id=video_id)
+            if card_path:
+                print(f"  [5-1] 카드 이미지 완료 {card_path.name}")
 
             # 6. 유튜브 업로드
             upload_id = run_upload(ctx, video_id=video_id)

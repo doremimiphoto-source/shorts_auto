@@ -68,9 +68,13 @@ CREATE TABLE IF NOT EXISTS videos (
     width           INTEGER,
     height          INTEGER,
     thumbnail_path  TEXT,                                  -- 생성된 썸네일 JPEG 경로
+    card_image_path TEXT,                                  -- 카드 이미지 PNG 경로 (image_stage)
     rendered_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     valid           INTEGER DEFAULT 0                      -- 1 = validation 통과
 );
+-- 기존 DB에 컬럼 추가 (없을 때만)
+CREATE TABLE IF NOT EXISTS _card_migration_sentinel (done INTEGER);
+INSERT OR IGNORE INTO _card_migration_sentinel VALUES (0);
 CREATE INDEX IF NOT EXISTS idx_videos_rendered_at ON videos(rendered_at);
 CREATE INDEX IF NOT EXISTS idx_videos_speaker_id ON videos(speaker_id);
 

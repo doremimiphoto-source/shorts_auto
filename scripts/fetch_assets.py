@@ -47,7 +47,7 @@ BG_KEYWORDS_BY_CATEGORY = {
         "hand writing notes paper",
         "textbook highlighter study",
         "desk stationery morning light",
-        # 신규 — 다양한 공부 장면
+        # 공부 장면 — 사물 클로즈업 (문화 중립 — 얼굴 없음)
         "student reading night desk",
         "pencil writing paper close",
         "concentration focus studying alone",
@@ -60,26 +60,34 @@ BG_KEYWORDS_BY_CATEGORY = {
         "coffee cup study break morning",
         "minimal desk setup clean",
         "notebook pen coffee morning",
-        "student glasses reading book",
         "study timer pomodoro desk",
         "eraser pencil homework close",
         "bookshelf books studying background",
+        # 한국/아시아 학생 특화 키워드
+        "asian student studying desk night lamp",
+        "asian girl studying textbook close",
+        "korean student notebook writing",
+        "asian school uniform student studying",
+        "asian teenager reading book library",
     ],
     # ── 학교·교실 ──────────────────────────────────────────────────
     "school": [
-        # 기존
+        # 기존 (서양 학교 사물함 → 폴백으로만 사용)
         "empty classroom sunlight",
-        "school hallway locker",
         "chalk blackboard school",
         "students walking school",
-        # 신규
+        # 한국/아시아 학교 환경
+        "asian classroom whiteboard students",
+        "korean school students uniform group",
+        "asian high school empty classroom morning",
+        "korean school gate morning students",
+        "asian school library studying quiet",
+        # 사물·배경 (문화 중립)
         "teacher writing whiteboard classroom",
         "students group study table",
         "school library bookshelf quiet",
         "blackboard math equation chalk",
-        "school cafeteria lunch students",
         "graduation ceremony diploma",
-        "school entrance gate morning",
         "science lab experiment school",
     ],
     # ── 동기부여·성취 ──────────────────────────────────────────────
