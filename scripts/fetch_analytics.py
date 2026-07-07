@@ -127,11 +127,74 @@ def report(days: int) -> None:
             print(f"  완주율 하위 절반 평균 조회수: {statistics.mean(lowret):,.0f}")
 
 
+def retention_curves(days: int, n: int) -> None:
+    """상위 조회수 영상의 리텐션 곡선 — 정확히 몇 %(초)에서 이탈하는지 (훅 진단)."""
+    yta, _ = _services()
+    end = date.today()
+    start = end - timedelta(days=days)
+    common = dict(ids="channel==MINE", startDate=start.isoformat(), endDate=end.isoformat())
+
+    top = yta.reports().query(
+        metrics="views,averageViewDuration", dimensions="video",
+        sort="-views", maxResults=n, **common).execute()
+    vids = [r[0] for r in (top.get("rows") or [])]
+    if not vids:
+        print("영상 없음")
+        return
+
+    db = sqlite3.connect(DB_PATH)
+    title_of = {vid: t for vid, t in
+                db.execute("SELECT youtube_video_id, title FROM uploads WHERE youtube_video_id IS NOT NULL")}
+    dur_of = {}
+    for vid, dsec in db.execute("""SELECT u.youtube_video_id, vi.duration_sec
+                                    FROM uploads u JOIN videos vi ON vi.id=u.video_id
+                                    WHERE u.youtube_video_id IS NOT NULL"""):
+        dur_of[vid] = dsec
+    db.close()
+
+    print("\n" + "=" * 60)
+    print(f" 리텐션 곡선 — 상위 {len(vids)}편 (첫 3초 이탈 진단)")
+    print("=" * 60)
+    for vid in vids:
+        try:
+            r = yta.reports().query(
+                metrics="audienceWatchRatio", dimensions="elapsedVideoTimeRatio",
+                filters=f"video=={vid}", **common).execute()
+        except Exception as e:
+            print(f"  [{title_of.get(vid,vid)[:30]}] 리텐션 조회 실패: {repr(e)[:60]}")
+            continue
+        rows = sorted((float(x[0]), float(x[1])) for x in (r.get("rows") or []))
+        if not rows:
+            continue
+        dur = dur_of.get(vid) or 30
+        def at(ratio):
+            # 가장 가까운 지점의 watch ratio
+            return min(rows, key=lambda x: abs(x[0] - ratio))[1]
+        start_wr = at(0.0) or 1.0
+        print(f"\n  ▶ {title_of.get(vid, vid)[:40]}  (길이 ~{int(dur)}초)")
+        print(f"    구간   시청유지  (시작=100% 기준)")
+        for ratio, label in [(0.0, "0초"), (0.1, f"~{dur*0.1:.0f}초"),
+                             (0.25, f"~{dur*0.25:.0f}초"), (0.5, "중간"), (1.0, "끝")]:
+            wr = at(ratio)
+            rel = 100 * wr / start_wr if start_wr else 0
+            bar = "█" * int(rel / 3)
+            print(f"    {label:<6} {rel:>5.0f}%  {bar}")
+        # 첫 10% 이탈률 = 훅 성패
+        drop10 = 100 * (1 - at(0.1) / start_wr) if start_wr else 0
+        verdict = "✅ 훅 강함" if drop10 < 20 else ("⚠️ 초반 이탈 큼" if drop10 < 40 else "❌ 훅 약함 — 첫 3초 개선 필수")
+        print(f"    → 첫 10%({dur*0.1:.0f}초)에서 {drop10:.0f}% 이탈  {verdict}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=90)
+    ap.add_argument("--retention", type=int, metavar="N",
+                    help="상위 N편의 리텐션 곡선(첫3초 진단)만 실행")
     args = ap.parse_args()
-    report(args.days)
+    if args.retention:
+        retention_curves(args.days, args.retention)
+    else:
+        report(args.days)
     return 0
 
 
