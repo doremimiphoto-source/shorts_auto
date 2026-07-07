@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- HiddenFindsDaily V2(여행) → Pinterest 자동 게시 (매일 14:00) -->
+<!-- 설치: cp 후 launchctl load (CREDENTIALS_GUIDE 참조) -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hiddenfindsdaily.v2travel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/doremi/Developer/shorts_auto/cards/launchd/run_daily.sh</string>
+        <string>--vertical</string>
+        <string>v2</string>
+        <string>--platform</string>
+        <string>pinterest</string>
+        <string>--auto</string>
+        <string>--count</string>
+        <string>5</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>14</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/doremi/Developer/shorts_auto/logs/cards_launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/doremi/Developer/shorts_auto/logs/cards_launchd.err</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

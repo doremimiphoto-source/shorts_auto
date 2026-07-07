@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- HiddenFindsDaily V3(K-뷰티) → Pinterest 자동 게시 (매일 20:00, 카테고리 자동 순환) -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hiddenfindsdaily.v3kbeauty</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/doremi/Developer/shorts_auto/cards/launchd/run_daily.sh</string>
+        <string>--vertical</string>
+        <string>v3</string>
+        <string>--platform</string>
+        <string>pinterest</string>
+        <string>--auto</string>
+        <string>--count</string>
+        <string>5</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>20</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/doremi/Developer/shorts_auto/logs/cards_launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/doremi/Developer/shorts_auto/logs/cards_launchd.err</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
