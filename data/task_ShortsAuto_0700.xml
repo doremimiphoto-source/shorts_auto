@@ -25,7 +25,7 @@
   </Settings>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-05-20T07:00:00+09:00</StartBoundary>
+      <StartBoundary>2026-05-20T12:30:00+09:00</StartBoundary>
       <ScheduleByDay>
         <DaysInterval>1</DaysInterval>
       </ScheduleByDay>
