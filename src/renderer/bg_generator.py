@@ -14,199 +14,80 @@ import urllib.request
 from pathlib import Path
 
 
-# ── 콘텐츠 키워드 → 이미지 프롬프트 매핑 ───────────────────────────────────
-_PROMPT_MAP: list[tuple[list[str], str]] = [
-    # ─ 시험 행운 부적
-    (
-        ["부적", "lucky_charm", "행운", "만점 전설", "10명에게 공유"],
-        "breathtaking anime girl holding radiant golden exam luck talisman, "
-        "swirling magical stardust and sparkling aurora particles around her, "
-        "cinematic volumetric light shafts, rich crimson and gold mystical glow, "
-        "ultra-detailed anime illustration, professional digital art, dramatic dark background, "
-        "award-winning artwork, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 체육 수행평가
-    (
-        ["멀리던지기", "멀리차기", "에어로빅", "줄넘기"],
-        "cinematic freeze-frame athlete in explosive peak action, "
-        "dramatic motion blur speed streaks, shattered light prism energy burst, "
-        "high-contrast deep blue orange cinematic color grade, "
-        "professional sports photography, 8K ultra detail, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 도덕 수행평가
-    (
-        ["도덕", "도덕적", "도덕적 행동", "도덕적 추론"],
-        "luminous golden scales of justice floating in ethereal divine light, "
-        "soft glowing feathers drifting in sacred warm rays, "
-        "cinematic god rays volumetric fog, dreamlike harmony concept art, "
-        "professional CGI render, award-winning digital illustration, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 역사 수행평가 — 청나라·중국
-    (
-        ["청나라", "한족", "중국 역사"],
-        "majestic Forbidden City at blue hour, ornate golden dragon pillars glowing, "
-        "cinematic low-angle shot with dramatic sky, "
-        "rich cinnabar red and imperial gold color palette, "
-        "8K hyperrealistic professional photography, cinematic color grading, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 역사 수행평가 — 일반
-    (
-        ["역사", "독후감", "마인드맵", "자기주도 학습지"],
-        "ancient Korean palace at golden hour, exquisite brush painting style, "
-        "dramatic side lighting on aged scroll parchment texture, "
-        "rich sepia and amber cinematic color grade, bokeh fireflies, "
-        "award-winning fine art photography, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 수학 수행평가
-    (
-        ["일차부등식", "인생그래프", "수학"],
-        "mesmerizing neon blue-violet mathematical equations cascading in deep space, "
-        "glowing parabola curves and 3D geometry floating holographically, "
-        "cinematic lens flare, dark cosmic background with starfield, "
-        "hyperrealistic CGI render, 8K ultra-sharp, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 과학 수행평가
-    (
-        ["영양소", "광물", "광물 특성", "과학", "실험"],
-        "stunning science lab with glowing luminescent liquid-filled beakers, "
-        "crystalline minerals sparkling under dramatic rim lighting, "
-        "cinematic teal and orange color grade, floating DNA helix bokeh, "
-        "professional scientific photography, 8K ultra detail, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 국어 수행평가
-    (
-        ["반어", "역설", "풍자", "국어", "문학", "서술형"],
-        "magnificent Korean ink calligraphy brushstroke in dramatic black flow, "
-        "aged golden parchment texture with bokeh soft light, "
-        "cinematic side-lit classical atmosphere, ink droplets splashing artistically, "
-        "award-winning fine art photography, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 음악 수행평가
-    (
-        ["칼림바", "음악신문", "음악"],
-        "enchanting concert hall filled with floating luminous musical notes, "
-        "dramatic stage light beams cutting through smoke, "
-        "rich purple and warm gold cinematic color grade, "
-        "kalimba tines glinting in spotlight, bokeh string lights, "
-        "professional concert photography, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 영어 수행평가
-    (
-        ["영어 쓰기", "영어 듣기", "영어"],
-        "sleek modern global education concept, glowing translucent speech bubbles, "
-        "neon blue world map hologram floating in dark air, "
-        "cinematic cool blue-white color grade, futuristic minimalist aesthetic, "
-        "professional advertising photography, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 한문 수행평가
-    (
-        ["창의 한자", "성어", "한문", "공익 광고"],
-        "exquisite Chinese ink calligraphy brushstroke on luxurious rice paper, "
-        "dramatic single beam spotlight on bold black strokes, "
-        "elegant vermillion seal stamp accent, rich warm scholarly atmosphere, "
-        "award-winning fine art, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 중국어 수행평가
-    (
-        ["한어병음", "국적", "중국어"],
-        "vibrant Chinese festival night scene, rows of glowing crimson paper lanterns, "
-        "golden confetti bokeh falling gracefully, "
-        "cinematic warm orange-red color grade, luxury cultural atmosphere, "
-        "professional photography, 8K, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 암기 비법
-    (
-        ["암기", "기억", "망각 곡선", "두문자법", "연상법"],
-        "breathtaking human brain with bioluminescent neuron network glowing electric blue, "
-        "synaptic sparks cascading like aurora through neural pathways, "
-        "deep black cosmic background, cinematic volumetric light, "
-        "hyperrealistic CGI render, 8K ultra-detail, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 시간 관리 / 포모도로
-    (
-        ["포모도로", "시간표", "플래너", "시간 관리", "시간 배분"],
-        "ultra-premium minimal desk setup at golden hour, "
-        "sleek white notebook and elegant pen bathed in warm window light, "
-        "glowing brass hourglass with soft bokeh background, "
-        "cinematic shallow depth-of-field, luxury editorial photography, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 수면·생활습관 (수면 > 밤새기 등)
-    (
-        ["수면", "밤새", "잠", "숙면", "기억 고정", "해마", "수면 시간"],
-        "serene Korean middle school girl sleeping peacefully at tidy desk, "
-        "soft warm bedside lamp glow, neat Korean textbooks and stationery beside her, "
-        "navy school uniform blazer folded on chair, "
-        "gentle bokeh moonlight through curtain window, "
-        "cinematic warm amber and soft blue color grade, "
-        "realistic Korean aesthetics, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 멘탈·동기·슬럼프
-    (
-        ["슬럼프", "동기", "멘탈", "포기", "집중력", "의지"],
-        "determined Korean middle school student sitting at desk facing window at sunrise, "
-        "dramatic golden morning light streaming through window casting long shadows, "
-        "open Korean textbook and pencil in hand, navy school uniform, "
-        "motivational cinematic teal-gold color grade, depth of field bokeh, "
-        "realistic editorial photography, no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 스마트폰·SNS·디지털 습관
-    (
-        ["스마트폰", "SNS", "유튜브", "인스타", "디지털", "화면 시간"],
-        "Korean middle school student reluctantly putting down smartphone, "
-        "phone screen glow fading as textbook opens on wooden desk, "
-        "selective focus on Korean math textbook in foreground, "
-        "cool blue-to-warm amber color transition, cinematic shallow DOF, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 암기·기억법
-    (
-        ["암기", "기억", "망각 곡선", "두문자법", "연상법"],
-        "glowing neural network synapses in deep blue-violet bioluminescent cosmos, "
-        "Korean study notes and flashcards overlaid as transparent ghost images, "
-        "dramatic volumetric light, hyperrealistic CGI, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-    # ─ 시험 대비 / 기출 / 기말 (범용)
-    (
-        ["기출", "기말", "시험 대비", "수행평가", "중간고사", "오답", "공부"],
-        "Korean middle school student in navy blazer studying intensely at wooden desk at night, "
-        "warm amber desk lamp, Korean math and science textbooks open, "
-        "city apartment window bokeh in background, pencil in hand, "
-        "cinematic teal-orange color grade, photorealistic editorial style, "
-        "no text no watermark, vertical portrait 9:16",
-    ),
-]
 
-_DEFAULT_PROMPT = (
-    "Korean middle school girl in navy school uniform blazer studying at premium wooden desk, "
-    "warm amber desk lamp casting dramatic rim light on open Korean textbook, "
-    "neat stationery — mechanical pencil, highlighter, sticky notes, "
-    "soft bokeh apartment window with evening city lights in background, "
-    "cinematic teal and warm gold color grade, photorealistic editorial photography, "
-    "no text no watermark, vertical portrait 9:16"
+
+# ── 한국 학생 맥락 프롬프트 (한국풍·내용매칭·seed 변형 다양성) ───────────────────
+# 사용자 요구: 외국/추상 이미지 대신 한국 학생 실사 장면, 내용과 매칭, 반복 없이.
+_KR_STYLE = (
+    "photorealistic candid editorial photography, realistic Korean student, "
+    "cinematic warm amber and soft teal color grade, shallow depth of field bokeh, "
+    "natural lighting, no text no watermark, no logo, vertical portrait 9:16"
 )
 
+# 다양성용 세팅/앵글 변형 (seed로 선택 → 같은 주제라도 다른 장면)
+_KR_SETTINGS = [
+    "at a tidy wooden desk at night under a warm amber desk lamp",
+    "by a large window with soft morning daylight streaming in",
+    "in a cozy study room with bookshelves softly blurred behind",
+    "at a clean minimal desk with neat stationery and colorful sticky notes",
+    "in a quiet apartment room with city night lights bokeh through the window",
+    "at a library-style desk with stacked textbooks and a small plant",
+]
 
-def _build_prompt(script: dict) -> str:
-    """스크립트 내용 + hook_pattern으로 가장 맞는 이미지 프롬프트 선택."""
-    hook_pattern = script.get("hook_pattern", "")
-    full_text = " ".join([
-        script.get("hook", ""),
-        script.get("body", ""),
-        script.get("twist", ""),
-        hook_pattern,
-    ])
-    for keywords, prompt in _PROMPT_MAP:
-        if any(kw in full_text for kw in keywords):
-            return prompt
-    return _DEFAULT_PROMPT
+# 주제(키워드) → 한국 학생 장면 (내용 매칭). 모두 한국 맥락.
+_KR_TOPICS: list[tuple[list[str], str]] = [
+    (["부적", "행운", "합격", "기원", "lucky"],
+     "a Korean middle school student in navy school uniform holding a good-luck exam charm with a hopeful smile"),
+    (["멀리던지기", "멀리차기", "에어로빅", "줄넘기", "체육", "달리기"],
+     "a Korean middle school student in PE uniform mid-motion in a school gymnasium, energetic"),
+    (["도덕", "인성", "배려", "봉사"],
+     "a thoughtful Korean middle school student writing reflections in a notebook in a calm classroom"),
+    (["역사", "독후감", "한국사", "조선", "고려", "삼국", "임진왜란"],
+     "a Korean middle school student studying history, a Korean palace (Gyeongbokgung) poster softly visible on the wall"),
+    (["수학", "일차부등식", "방정식", "함수", "그래프", "도형", "확률"],
+     "a Korean middle school student solving math problems in a workbook, pencil in hand, concentrating"),
+    (["과학", "영양소", "광물", "실험", "세포", "화학", "물리"],
+     "a Korean middle school student in a school science lab with beakers, curious and focused"),
+    (["국어", "문학", "반어", "역설", "풍자", "서술형", "소설", "수필", "고전"],
+     "a Korean middle school student absorbed in reading a Korean literature book at a desk"),
+    (["음악", "칼림바", "리코더", "가창", "음악신문"],
+     "a Korean middle school student practicing a musical instrument in a bright music room"),
+    (["영어", "영단어", "영어 듣기", "영어 쓰기", "english"],
+     "a Korean middle school student studying English with vocabulary flashcards at a desk"),
+    (["한문", "한자", "성어", "중국어", "한어병음"],
+     "a Korean middle school student practicing Chinese characters with a brush pen, focused"),
+    (["암기", "기억", "망각", "두문자", "연상", "외우", "플래시"],
+     "a Korean middle school student memorizing with colorful flashcards and sticky notes on the wall"),
+    (["포모도로", "시간표", "플래너", "시간 관리", "계획", "루틴"],
+     "a Korean middle school student with a study planner and a small timer on a tidy desk"),
+    (["수면", "밤새", "잠", "숙면", "해마", "졸음"],
+     "a Korean middle school student sleeping peacefully at a desk, gentle bedside lamp, textbooks beside them"),
+    (["슬럼프", "동기", "멘탈", "포기", "의지", "집중", "스트레스"],
+     "a determined Korean middle school student at a desk facing a sunrise window, motivational mood"),
+    (["스마트폰", "sns", "유튜브", "인스타", "디지털", "게임"],
+     "a Korean middle school student setting down a smartphone to open a textbook, refocusing"),
+    (["기출", "기말", "중간고사", "모의고사", "시험 대비", "수행평가", "내신", "벼락치기"],
+     "a Korean middle school student studying intensely for exams at a desk piled with textbooks, determined focus"),
+]
+
+_KR_DEFAULT = ("a Korean middle school student in navy school uniform studying diligently, "
+               "focused and calm")
+
+
+def _build_prompt(script: dict, seed: int | None = None) -> str:
+    """스크립트 내용 → 한국 학생 장면 프롬프트 (내용 매칭 + seed 변형)."""
+    full = " ".join([
+        str(script.get("hook", "")), str(script.get("body", "")),
+        str(script.get("twist", "")), str(script.get("title", "")),
+        str(script.get("hook_pattern", "")),
+    ]).lower()
+    scene = _KR_DEFAULT
+    for keywords, s in _KR_TOPICS:
+        if any(kw.lower() in full for kw in keywords):
+            scene = s
+            break
+    setting = _KR_SETTINGS[(seed or 0) % len(_KR_SETTINGS)]
+    return f"{scene}, {setting}, {_KR_STYLE}"
 
 
 def generate_bg_video(
@@ -216,6 +97,7 @@ def generate_bg_video(
     timeout_sec: int = 45,
     duration: int = 35,
     ffmpeg_bin: str = "ffmpeg",
+    seed: int | None = None,
 ) -> Path | None:
     """AI 이미지 생성 → 풀 길이 Ken Burns 판/줌 영상. 실패 시 None 반환.
 
@@ -223,9 +105,13 @@ def generate_bg_video(
     - scale 1.30× → crop 이동으로 35초 무루프 판 애니메이션
     - 해시 마지막 자리로 이동 방향 다양화 (4방향)
     - cache_dir에 프롬프트 해시 기반 캐시 → 동일 콘텐츠 재생성 방지
+    - seed: 영상별 고유 시드 → 같은 콘텐츠라도 매번 다른 이미지 (반복 제거)
     """
-    prompt = _build_prompt(script)
-    content_hash = hashlib.sha256(prompt.encode()).hexdigest()[:14]
+    # seed를 해시·URL·프롬프트에 반영 → 동일 콘텐츠라도 영상마다 다른 한국 장면
+    seed_val = int(seed) % 1_000_000 if seed is not None else None
+    prompt = _build_prompt(script, seed_val)
+    hash_src = f"{prompt}|seed={seed_val}" if seed_val is not None else prompt
+    content_hash = hashlib.sha256(hash_src.encode()).hexdigest()[:14]
     img_path = cache_dir / f"aibg_{content_hash}.jpg"
     vid_path = cache_dir / f"aibg_{content_hash}_full.mp4"
 
@@ -242,6 +128,8 @@ def generate_bg_video(
             f"https://image.pollinations.ai/prompt/{encoded}"
             f"?width=1080&height=1920&nologo=true&enhance=true&model=flux-realism"
         )
+        if seed_val is not None:
+            url += f"&seed={seed_val}"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "ShortsAuto/1.0"})
             with urllib.request.urlopen(req, timeout=timeout_sec) as resp:

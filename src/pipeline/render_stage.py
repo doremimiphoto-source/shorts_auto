@@ -45,22 +45,31 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
         try:
             script = ctx.repos.scripts.get(video["script_id"])
 
-            # 실사 풀 우선 → AI 폴백 (반복 방지: 동일 AI 프롬프트 캐시 문제)
-            bg_video = _select_content_bg(bg_dir, script, au)
-            if bg_video is not None:
-                ctx.log.info("bg_source", source="pool_match", path=bg_video.name)
-            else:
-                # 랜덤 풀 선택 (study/school 폴더 우선)
-                bg_video = _select_study_pool(bg_dir, au) or selector.select_bg_video()
-                ctx.log.info("bg_source", source="pool_random", path=bg_video.name)
+            # 배경 선택: config background.ai_primary 로 우선순위 제어 (라이브 안전 토글)
+            #   true(기본): AI 한국 배경 우선 → 실패 시 스톡 폴백
+            #   false:      스톡 풀 우선 → 비면 AI 폴백 (기존 동작)
+            ai_cache_dir = ctx.project_root / "output" / "aibg_cache"
+            ai_primary = bool(renderer_cfg.get("background", {}).get("ai_primary", True))
 
-            # AI 배경은 풀이 완전히 비었을 때만 (폴백)
-            if bg_video is None:
-                ai_cache_dir = ctx.project_root / "output" / "aibg_cache"
-                bg_video = _try_ai_bg(script, ai_cache_dir, ctx)
+            def _stock_bg():
+                return (_select_content_bg(bg_dir, script, au)
+                        or _select_study_pool(bg_dir, au)
+                        or selector.select_bg_video())
+
+            if ai_primary:
+                bg_video = _try_ai_bg(script, ai_cache_dir, ctx, seed=video_id)
+                source = "ai_primary"
                 if bg_video is None:
-                    bg_video = selector.select_bg_video()
-                ctx.log.info("bg_source", source="ai_fallback", path=bg_video.name)
+                    bg_video = _stock_bg()
+                    source = "pool_fallback"
+            else:
+                bg_video = _stock_bg()
+                source = "pool_primary"
+                if bg_video is None:
+                    bg_video = _try_ai_bg(script, ai_cache_dir, ctx, seed=video_id)
+                    source = "ai_fallback"
+            ctx.log.info("bg_source", source=source,
+                         path=bg_video.name if bg_video else "none")
 
             bgm = selector.select_bgm(mood=_bgm_mood_for(script))
         except FileNotFoundError as e:
@@ -178,13 +187,17 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
 
 
 
-def _try_ai_bg(script: dict | None, cache_dir: Path, ctx) -> Path | None:
-    """AI 콘텐츠 매칭 배경 생성 시도. 실패 시 None 반환."""
+def _try_ai_bg(script: dict | None, cache_dir: Path, ctx, *, seed: int | None = None) -> Path | None:
+    """AI 콘텐츠 매칭 배경 생성 시도. 실패 시 None 반환.
+
+    seed: 영상별 고유 시드 → 같은 콘텐츠라도 매번 다른 이미지 (반복 제거).
+    """
     if script is None:
         return None
     try:
         from ..renderer.bg_generator import generate_bg_video
-        return generate_bg_video(script, cache_dir)
+        # duration=60: 영상 최대 길이(58s)를 한 번의 팬으로 커버 → 루프 점프 없음
+        return generate_bg_video(script, cache_dir, seed=seed, duration=60)
     except Exception as e:
         ctx.log.warning("ai_bg_failed", error=repr(e))
         return None

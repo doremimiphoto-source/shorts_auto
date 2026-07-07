@@ -383,6 +383,8 @@ renderer:
     pool_dir: assets/bg_video
     min_pool_size: 100                 # FR-5.4
     reuse_min_interval_days: 7
+    ai_primary: true                   # true: AI 한국 배경 우선(내용매칭·영상별 고유), 실패 시 스톡 폴백
+                                       # false: 스톡 풀 우선(기존) — Pollinations 문제 시 끄는 안전 스위치
     randomize:
       crop: true
       color_grade: true
