@@ -12,10 +12,11 @@
         <string>REPLACE_WITH_PROJECT_PATH/scripts/run_batch.sh</string>
     </array>
 
+    <!-- 조회수 분석 결과: 아침(06시) 최약(9 vpd) → 점심 12:30(28 vpd)으로 이동. 라벨(0700)은 이력상 유지 -->
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Hour</key>   <integer>6</integer>
-        <key>Minute</key> <integer>0</integer>
+        <key>Hour</key>   <integer>12</integer>
+        <key>Minute</key> <integer>30</integer>
     </dict>
 
     <key>StandardOutPath</key>
