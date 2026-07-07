@@ -100,6 +100,18 @@ def _strip_cjk(text: str) -> str:
     return _CJK_STRIP.sub("", text).strip()
 
 
+def _strip_emoji(text: str) -> str:
+    """이모지·기호 제거 (번인 자막용). 한글 폰트(고운돋움/Pretendard)에 이모지 글리프가
+    없어 두부박스(☐)로 깨지므로 화면 번인 텍스트에서는 이모지를 뺀다.
+    유튜브 제목 메타데이터(업로드용)에는 영향 없음."""
+    def _is_emoji(cp: int) -> bool:
+        return (0x1F300 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF or
+                0x2190 <= cp <= 0x21FF or 0x2B00 <= cp <= 0x2BFF or
+                0x2300 <= cp <= 0x23FF or 0xFE00 <= cp <= 0xFE0F or
+                cp in (0x200D, 0x20E3, 0x203C, 0x2049))
+    return _re.sub(r"\s+", " ", "".join(c for c in text if not _is_emoji(ord(c)))).strip()
+
+
 def _ko_len(text: str) -> int:
     """한글 음절(가-힣) 수만 반환 (레거시 SRT용)."""
     return sum(1 for c in text if "가" <= c <= "힣")
@@ -269,7 +281,8 @@ def make_styled_subtitles(
 
     extra: list[str] = []
     full_end = _ass_time(audio_duration)
-    title_text = _strip_ko_clean((script.get("title") or "").strip())
+    # 번인 제목은 이모지 제거 (한글 폰트에 글리프 없어 깨짐). 유튜브 제목엔 영향 없음.
+    title_text = _strip_emoji(_strip_ko_clean((script.get("title") or "").strip()))
     if title_text:
         wrapped_title = _wrap_text_lines(title_text, max_vw_per_line=9.0)
         extra.append(f"Dialogue: 1,0:00:00.00,{full_end},Title,,0,0,0,,{ta}{wrapped_title}\n")
