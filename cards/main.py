@@ -115,7 +115,52 @@ def _publish_pinterest(job: PinJob, *, dry_run: bool) -> int:
         return 1
 
 
-def run_v2_pinterest(*, count: int, region: str, theme: str, dry_run: bool) -> int:
+def _build_caption(job: PinJob, affiliate_url: str) -> str:
+    """수동 게시용 캡션 (제목·요약·링크트리·어필리에이트 공시·해시태그)."""
+    return (
+        f"{job.title}\n{job.subtitle}\n\n"
+        f"📌 {job.summary}\n\n"
+        f"🔗 Links in bio: {LINKTREE_URL}\n\n"
+        f"{AFFILIATE_DISCLOSURE}\n\n"
+        f"{_hashtag_str(job.vertical)}\n\n"
+        f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
+        f"어필리에이트 링크: {affiliate_url}"
+    )
+
+
+def run_export(job: PinJob) -> int:
+    """수동 게시용 내보내기 — 전체 캐러셀을 3비율로 렌더 + caption.txt. 업로드/API 없음."""
+    from cards.affiliate.links import build_link
+    campaign = _campaign_id()
+    out_dir = VERTICAL_OUTPUT[job.vertical] / f"export_{campaign}"
+    renderer = CarouselRenderer()
+
+    counts = {}
+    for ratio in ("pinterest", "instagram", "tiktok"):
+        paths = renderer.render(job.slides, ratio, out_dir / ratio)
+        counts[ratio] = len(paths)
+
+    affiliate_url = build_link(job.partner, platform="manual",
+                               vertical=job.short_vertical, campaign=campaign)
+    (out_dir / "caption.txt").write_text(_build_caption(job, affiliate_url), encoding="utf-8")
+
+    # DB 기록 (중복 방지용 제목 저장)
+    db = open_cards_db()
+    save_content(db, vertical=job.vertical, title=job.title,
+                 hook_text=job.title, slides_json=job.slides_json)
+    db.close()
+
+    log.info("✅ 수동 게시용 내보내기 완료")
+    print(f"\n📁 {out_dir}")
+    print(f"   ├─ pinterest/  ({counts.get('pinterest',0)}장, 2:3)")
+    print(f"   ├─ instagram/  ({counts.get('instagram',0)}장, 1:1)")
+    print(f"   ├─ tiktok/     ({counts.get('tiktok',0)}장, 9:16)")
+    print(f"   └─ caption.txt (제목·해시태그·공시)")
+    print(f"\n→ 각 플랫폼 앱에서 해당 비율 폴더 이미지 + caption 붙여넣기로 수동 게시")
+    return 0
+
+
+def run_v2(*, count: int, region: str, theme: str, dry_run: bool, export: bool) -> int:
     from cards.crawler.travel import generate_travel, to_slides, slides_to_json
     log.info("V2 여행 콘텐츠 생성: %s / %s", region, theme)
     c = generate_travel(region, theme, count=count)
@@ -127,10 +172,10 @@ def run_v2_pinterest(*, count: int, region: str, theme: str, dry_run: bool) -> i
         summary=" · ".join(p.get("name", "") for p in c.places[:5]),
         partner="booking", partner_base_url="https://www.booking.com",
     )
-    return _publish_pinterest(job, dry_run=dry_run)
+    return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
 
-def run_v1_pinterest(*, count: int, dry_run: bool) -> int:
+def run_v1(*, count: int, dry_run: bool, export: bool) -> int:
     from cards.crawler.shopping import generate_shopping, to_slides, slides_to_json
     log.info("V1 쇼핑 비교 콘텐츠 생성 (AliExpress vs Amazon)")
     db_tmp = open_cards_db()
@@ -144,10 +189,10 @@ def run_v1_pinterest(*, count: int, dry_run: bool) -> int:
         summary=" · ".join(i.product_name for i in c.items[:5]),
         partner="aliexpress", partner_base_url="https://www.aliexpress.com",
     )
-    return _publish_pinterest(job, dry_run=dry_run)
+    return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
 
-def run_v3_pinterest(*, count: int, category: str, dry_run: bool) -> int:
+def run_v3(*, count: int, category: str, dry_run: bool, export: bool) -> int:
     from cards.crawler.kbeauty import generate_kbeauty, to_slides, slides_to_json
     log.info("V3 K-뷰티 콘텐츠 생성: %s", category)
     c = generate_kbeauty(category, count=count)
@@ -159,7 +204,7 @@ def run_v3_pinterest(*, count: int, category: str, dry_run: bool) -> int:
         summary=" · ".join(p.name_en for p in c.products[:5]),
         partner="yesstyle", partner_base_url="https://www.yesstyle.com",
     )
-    return _publish_pinterest(job, dry_run=dry_run)
+    return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -173,31 +218,33 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--auto", action="store_true",
                     help="날짜 기반 주제 자동 선택 (launchd 자동화용)")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--export", action="store_true",
+                    help="수동 게시용 내보내기 (3비율 전체 캐러셀 + caption.txt, 업로드/API 없음)")
     args = ap.parse_args(argv)
 
-    if args.platform != "pinterest":
-        log.error("아직 미구현 플랫폼: %s (MVP는 pinterest)", args.platform)
+    if not args.export and args.platform != "pinterest":
+        log.error("아직 미구현 플랫폼: %s (자동 업로드는 pinterest만, 수동은 --export)", args.platform)
         return 2
 
     try:
         if args.vertical == "v1":
-            return run_v1_pinterest(count=args.count, dry_run=args.dry_run)
+            return run_v1(count=args.count, dry_run=args.dry_run, export=args.export)
         if args.vertical == "v2":
             region, theme = args.region, args.theme
             if args.auto:
                 from cards.topics import pick_v2
                 region, theme = pick_v2()
                 log.info("auto 주제 선택: %s / %s", region, theme)
-            return run_v2_pinterest(count=args.count, region=region,
-                                    theme=theme, dry_run=args.dry_run)
+            return run_v2(count=args.count, region=region, theme=theme,
+                          dry_run=args.dry_run, export=args.export)
         if args.vertical == "v3":
             category = args.category
             if args.auto:
                 from cards.topics import pick_v3
                 category = pick_v3()
                 log.info("auto 카테고리 선택: %s", category)
-            return run_v3_pinterest(count=args.count, category=category,
-                                    dry_run=args.dry_run)
+            return run_v3(count=args.count, category=category,
+                          dry_run=args.dry_run, export=args.export)
     except Exception as e:
         # 콘텐츠 생성/렌더 단계 예외 → 텔레그램 알림 후 실패 반환
         from cards import notify
