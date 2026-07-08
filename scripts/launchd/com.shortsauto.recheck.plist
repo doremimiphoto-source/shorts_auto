@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 쇼츠 조회수 재점검 1회 예약 (2026-07-17 10:00 KST) -->
+<!-- launchd는 연도 미지원 → 매년 7/17 발동. 1회성이므로 실행 후 unload 권장. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shortsauto.recheck</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/doremi/Developer/shorts_auto/scripts/recheck_shorts.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Month</key>  <integer>7</integer>
+        <key>Day</key>    <integer>17</integer>
+        <key>Hour</key>   <integer>10</integer>
+        <key>Minute</key> <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/doremi/Developer/shorts_auto/logs/recheck_launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/doremi/Developer/shorts_auto/logs/recheck_launchd.err</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
