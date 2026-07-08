@@ -50,9 +50,19 @@ def _search_url(query: str) -> str | None:
         return None
 
 
-def fetch_photo(query: str, cache_dir: Path, *, tag: str) -> Path | None:
-    """장소 사진 다운로드 → 로컬 경로. 실패/미설정 시 None (렌더러가 폴백)."""
-    url = _search_url(query)
+def fetch_photo(query: str, cache_dir: Path, *, tag: str,
+                fallbacks: list[str] | None = None) -> Path | None:
+    """장소 사진 다운로드 → 로컬 경로. 실패/미설정 시 None (렌더러가 폴백).
+
+    fallbacks: 정확 검색 실패 시 시도할 대체 쿼리(예: 지역 대표사진). HOOK 등 일반
+    슬라이드에만 사용 — 특정 장소(REVEAL)엔 오사진 혼입 방지 위해 미사용.
+    """
+    url = None
+    for q in [query] + (fallbacks or []):
+        if q and q.strip():
+            url = _search_url(q.strip())
+            if url:
+                break
     if not url:
         return None
     cache_dir.mkdir(parents=True, exist_ok=True)

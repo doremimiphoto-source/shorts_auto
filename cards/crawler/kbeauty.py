@@ -233,8 +233,9 @@ def _download_image(url: str, dest_dir: Path, tag: str) -> Path | None:
 def to_slides(content: KBeautyContent) -> list[Slide]:
     from cards.config import OUTPUT_DIR
     cache = OUTPUT_DIR / "_prodcache"
+    n = len(content.products)
     slides: list[Slide] = [
-        Slide(type="hook", badge="K-BEAUTY",
+        Slide(type="hook", badge=f"{n} K-BEAUTY PICKS" if n else "K-BEAUTY",
               title=content.title, subtitle=content.subtitle),
     ]
     for i, p in enumerate(content.products, start=1):
@@ -257,6 +258,7 @@ def to_slides(content: KBeautyContent) -> list[Slide]:
         body_lines=[
             "💾  Save this for your next K-haul",
             "📤  Send to your skincare bestie",
+            "➕  Follow for daily K-beauty finds",
             "💬  Which one should I review next?",
         ],
     ))

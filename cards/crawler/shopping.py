@@ -129,8 +129,9 @@ def generate_shopping(db: CardsDB, *, count: int = 4) -> ShoppingContent:
 
 
 def to_slides(content: ShoppingContent) -> list[Slide]:
+    n = len(content.items)
     slides: list[Slide] = [
-        Slide(type="hook", badge="PRICE CHECK",
+        Slide(type="hook", badge=f"{n} PRICE SHOCKS" if n else "PRICE CHECK",
               title=content.title, subtitle=content.subtitle),
     ]
     for c in content.items:
@@ -153,9 +154,10 @@ def to_slides(content: ShoppingContent) -> list[Slide]:
         type="cta",
         title=f"{content.cta} 🛒",
         body_lines=[
-            "💾  Save this before you overpay",
+            "💾  Save before you overpay again",
             "📤  Send to someone who shops Amazon",
-            "💬  Want more comparisons? Comment",
+            "➕  Follow for daily price finds",
+            "💬  Want more comparisons? Comment 👇",
         ],
     ))
     return slides

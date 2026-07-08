@@ -138,15 +138,17 @@ def to_slides(content: TravelContent) -> list[Slide]:
     from cards.photos import fetch_photo
     cache = OUTPUT_DIR / "_placecache"
 
-    # HOOK 배경: 첫 장소 사진 (없으면 그라디언트 폴백)
+    # HOOK 배경: 첫 장소 → 실패 시 지역 대표사진 폴백 (스크롤 정지용, 일반 훅이라 OK)
     hook_img = None
     if content.places:
         first = content.places[0]
+        loc = str(first.get('location', '')).strip()
         hook_img = fetch_photo(
-            f"{first.get('name','')} {first.get('location','')}".strip(),
-            cache, tag="hook")
+            f"{first.get('name','')} {loc}".strip(), cache, tag="hook",
+            fallbacks=[f"{loc} coast landscape", f"{loc} travel scenery", f"{loc} nature"])
+    n = len(content.places)
     slides: list[Slide] = [
-        Slide(type="hook", badge="HIDDEN TRAVEL",
+        Slide(type="hook", badge=f"{n} HIDDEN GEMS" if n else "HIDDEN TRAVEL",
               title=content.title, subtitle=content.subtitle,
               image_path=hook_img, image_mode="cover"),
     ]
@@ -166,9 +168,10 @@ def to_slides(content: TravelContent) -> list[Slide]:
         type="cta",
         title=f"{content.cta} ✈️",
         body_lines=[
-            "💾  Saving this for later",
+            "💾  Save this for your next trip",
             "📤  Send it to your travel buddy",
-            "💬  Been to any of these? Tell me",
+            "➕  Follow for a hidden gem daily",
+            "💬  Which one first? Comment 👇",
         ],
     ))
     return slides

@@ -248,7 +248,7 @@ def _bottom_fade(base: Image.Image, start_y: int, color_rgb: tuple, height: int 
 # ── 렌더러 ────────────────────────────────────────────────────────────────────
 CANVAS = {
     "pinterest": (1000, 1500),
-    "instagram": (1080, 1080),
+    "instagram": (1080, 1350),   # 4:5 — 2026 IG 최적(화면 최대 활용)
     "tiktok":    (1080, 1920),
 }
 
@@ -269,15 +269,37 @@ class CarouselRenderer:
         W, H = CANVAS[ratio]
         output_dir.mkdir(parents=True, exist_ok=True)
         paths: list[Path] = []
+        total = len(slides)
         for i, slide in enumerate(slides, start=1):
-            img = self._render_slide(slide, W, H, seed=i)
+            img = self._render_slide(slide, W, H, seed=i, index=i, total=total)
             out = output_dir / f"{prefix}_{i:02d}.jpg"
             img.save(str(out), "JPEG", quality=90, optimize=True)
             paths.append(out)
         return paths
 
+    # ── 캐러셀 진행 도트 (상단, "더 있다" 신호 → 완주 유도) ──────────────────────
+    def _draw_progress(self, base: Image.Image, W: int, H: int, index: int, total: int) -> None:
+        if total < 2:
+            return
+        draw = ImageDraw.Draw(base)
+        r = max(4, W // 150)
+        gap = r * 3
+        span = (total - 1) * gap
+        x0 = (W - span) // 2
+        y = int(H * 0.045)
+        for k in range(total):
+            cx = x0 + k * gap
+            on = (k + 1) == index
+            col = self.pal["accent"] if on else (255, 255, 255)
+            rr = r + 1 if on else r
+            draw.ellipse([cx - rr, y - rr, cx + rr, y + rr],
+                         fill=col if on else None,
+                         outline=(255, 255, 255) if not on else None,
+                         width=0 if on else 2)
+
     # ── per-slide dispatch ──────────────────────────────────────────────────────
-    def _render_slide(self, slide: Slide, W: int, H: int, seed: int) -> Image.Image:
+    def _render_slide(self, slide: Slide, W: int, H: int, seed: int,
+                      index: int = 1, total: int = 1) -> Image.Image:
         # 배경: cover 모드 이미지만 풀블리드. contain(상품 썸네일)은 그라디언트 유지.
         has_cover = (slide.type in ("hook", "reveal") and slide.image_mode == "cover"
                      and slide.image_path and Path(slide.image_path).exists())
@@ -296,6 +318,7 @@ class CarouselRenderer:
             self._draw_compare(base, slide, W, H)
         elif slide.type == "cta":
             self._draw_cta(base, slide, W, H)
+        self._draw_progress(base, W, H, index, total)
         self._draw_watermark(base, W, H)
         return base
 
@@ -358,12 +381,13 @@ class CarouselRenderer:
         total_h = lh * len(lines)
         y = int(H * 0.74) - total_h
         for idx, line in enumerate(lines):
-            if idx == 0:
-                bb = f_title.getbbox(line)
-                _highlighter(base, pad, y + int(bb[3] * 0.55),
-                             pad + (bb[2] - bb[0]), y + bb[3] + 6,
-                             color_rgb=self.pal["highlight"], alpha=95)
-                draw = ImageDraw.Draw(base)
+            bb = f_title.getbbox(line)
+            lw = bb[2] - bb[0]
+            # 형광펜: 모든 줄 일관, 글자 몸통(x-height)에 정확히 위치
+            _highlighter(base, pad - 4, y + int(size * 0.30),
+                         pad + lw + 4, y + int(size * 0.96),
+                         color_rgb=self.pal["highlight"], alpha=82)
+            draw = ImageDraw.Draw(base)
             draw.text((pad, y), line, font=f_title, fill=self.pal["main"])
             y += lh
 
@@ -483,34 +507,39 @@ class CarouselRenderer:
 
     # ── CTA ──────────────────────────────────────────────────────────────────────
     def _draw_cta(self, base: Image.Image, slide: Slide, W: int, H: int) -> None:
-        draw = ImageDraw.Draw(base)
         pad = W // 12
-        cy = int(H * 0.30)
-
         title = slide.title or "Save this for later 💾"
         ft = _f_black(max(44, W // 13))
-        for line in _wrap(title, ft, W - pad * 2)[:3]:
-            _draw_rich(base, (0, cy), line, ft, self.pal["main"], center_w=W)
-            cy += int(ft.size * 1.18)
-
-        cy += H // 30
-        actions = slide.body_lines or [
-            "💾  Save it before you forget",
-            "📤  Share with someone who needs this",
-            "💬  Comment your favorite",
-        ]
         fa = _f_med(max(28, W // 28))
-        for line in actions[:4]:
+        fl = _f_bold(max(26, W // 30))
+        actions = (slide.body_lines or [
+            "💾  Save this for later",
+            "📤  Send to a friend who'd love this",
+            "➕  Follow for a hidden gem every day",
+        ])[:4]
+
+        title_lines = _wrap(title, ft, W - pad * 2)[:3]
+        lh_t = int(ft.size * 1.18)
+        lh_a = int(fa.size * 1.55)
+        gap1, gap2 = H // 28, H // 26
+        link_h = fl.size + 36
+        # 전체 블록 높이 → 세로 중앙 정렬 (하단 여백 해소)
+        block_h = len(title_lines) * lh_t + gap1 + len(actions) * lh_a + gap2 + link_h
+        cy = max(int(H * 0.10), (H - block_h) // 2)
+
+        for line in title_lines:
+            _draw_rich(base, (0, cy), line, ft, self.pal["main"], center_w=W)
+            cy += lh_t
+        cy += gap1
+        for line in actions:
             _draw_rich(base, (0, cy), line, fa, self.pal["sub"], center_w=W)
-            cy += int(fa.size * 1.6)
+            cy += lh_a
+        cy += gap2
 
         # 링크 박스
-        cy += H // 40
-        fl = _f_bold(max(26, W // 30))
         link = f"🔗 {self.linktree}"
         lw = _measure_rich(link, fl)
-        bx1 = (W - lw) // 2 - 30
-        bx2 = (W + lw) // 2 + 30
+        bx1, bx2 = (W - lw) // 2 - 30, (W + lw) // 2 + 30
         _rounded_box(base, bx1, cy - 12, bx2, cy + fl.size + 24,
                      fill_rgba=(*self.pal["accent"], 235), radius=(fl.size + 36) // 2)
         _draw_rich(base, (0, cy), link, fl, self.pal["bg_bot"], center_w=W)
