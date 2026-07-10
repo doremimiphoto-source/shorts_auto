@@ -134,6 +134,14 @@ def to_slides(content: ShoppingContent) -> list[Slide]:
         Slide(type="hook", badge=f"{n} PRICE SHOCKS" if n else "PRICE CHECK",
               title=content.title, subtitle=content.subtitle),
     ]
+    # 슬라이드 2도 훅 (IG는 안 넘기면 2번 재노출 → 여기서 저장 유도)
+    teasers = ["Same product, wildly different price",
+               "You've been overpaying on Amazon",
+               "The exact same item, way cheaper"]
+    slides.append(Slide(
+        type="hook", badge="",
+        title=teasers[n % len(teasers)],
+        subtitle="Save before your next order 💾"))
     for c in content.items:
         save_pct = ""
         if c.amazon_price_usd > c.ali_price_usd and c.multiple >= 1.2:

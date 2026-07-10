@@ -391,12 +391,12 @@ class CarouselRenderer:
             draw.text((pad, y), line, font=f_title, fill=self.pal["main"])
             y += lh
 
-        # 서브타이틀 + 스와이프 유도
+        # 서브타이틀 + 스와이프 유도 (이모지 폴백 — 💾 등 두부박스 방지)
         if slide.subtitle:
             fs = _f_med(max(26, W // 32))
             sy = y + 18
             for line in _wrap(slide.subtitle, fs, text_w)[:2]:
-                draw.text((pad, sy), line, font=fs, fill=self.pal["sub"])
+                _draw_rich(base, (pad, sy), line, fs, self.pal["sub"])
                 sy += int(fs.size * 1.35)
         fa = _f_semi(max(24, W // 36))
         _draw_rich(base, (pad, int(H * 0.80)), "Swipe to see them 👉", fa, self.pal["accent"])

@@ -33,6 +33,7 @@ class VerifiedPlace:
     lon: float | None
     wiki_url: str
     source: str          # 'wikipedia' | 'nominatim'
+    image_url: str = ""  # 위키백과 그 장소의 실제 대표사진 (정확성 — Unsplash보다 우선)
 
 
 def _get_json(url: str, *, timeout: int = 15) -> dict | list | None:
@@ -74,6 +75,9 @@ def _wikipedia(name: str, expected_country: str = "") -> VerifiedPlace | None:
     extract = (data.get("extract") or "").strip()
     desc = (data.get("description") or "").strip()
     coord = data.get("coordinates") or {}
+    # 위키 대표사진(그 장소 실제 이미지) — 원본 우선, 없으면 썸네일
+    img = ((data.get("originalimage") or {}).get("source")
+           or (data.get("thumbnail") or {}).get("source") or "")
     return VerifiedPlace(
         name=data.get("title", name),
         country="",
@@ -81,6 +85,7 @@ def _wikipedia(name: str, expected_country: str = "") -> VerifiedPlace | None:
         lat=coord.get("lat"), lon=coord.get("lon"),
         wiki_url=(data.get("content_urls", {}).get("desktop", {}).get("page", "")),
         source="wikipedia",
+        image_url=img,
     )
 
 

@@ -238,6 +238,14 @@ def to_slides(content: KBeautyContent) -> list[Slide]:
         Slide(type="hook", badge=f"{n} K-BEAUTY PICKS" if n else "K-BEAUTY",
               title=content.title, subtitle=content.subtitle),
     ]
+    # 슬라이드 2도 훅 (IG는 안 넘기면 2번 재노출 → 여기서 저장 유도)
+    teasers = ["The stuff Korean girls actually use",
+               "Ships worldwide — most people don't know",
+               "Save your skin (and your money)"]
+    slides.append(Slide(
+        type="hook", badge="",
+        title=teasers[n % len(teasers)],
+        subtitle="Save this for your next haul 💾"))
     for i, p in enumerate(content.products, start=1):
         body = [f"≈ ${p.price_usd} (approx)"]
         if p.note:

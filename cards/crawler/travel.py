@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from cards.facts import VerifiedPlace, verify_many
 from cards.llm import generate_json
@@ -30,12 +32,13 @@ Return STRICT JSON only:
 Rules: Only real, verifiable places. NO invented names. NO made-up resorts. {n} items."""
 
 # ── 2단계: 검증된 사실로 1인칭 작성 ───────────────────────────────────────────
-_WRITE_PROMPT = """You are a real traveler writing about places you personally visited.
-Audience: global English speakers scrolling a travel carousel. Write in FIRST PERSON.
+_WRITE_PROMPT = """You write a SAVE-WORTHY travel guide card for a global English audience.
+Accuracy matters more than vibes — people save this to actually use it, so every fact must be true.
 
-These places are VERIFIED real. The notes below are encyclopedic — use them ONLY to know
-what KIND of place each is (a fishing town, a river mouth, a quiet beach). Then write like
-a person who was THERE, about the feel of visiting.
+These places are VERIFIED real. Below are encyclopedic notes about each. Pull the concrete FACTS
+(what it's known for, its nickname, where it is, what's nearby, its size, how you reach it) and
+rephrase them into short natural lines. The TITLE/SUBTITLE/CTA carry a light personal voice;
+the per-place lines are FACTS from the notes.
 
 {facts_block}
 
@@ -47,20 +50,24 @@ Return STRICT JSON only:
     {{
       "name": "place name (keep exactly as given)",
       "location": "country (as given)",
-      "note": "ONE first-person sentence about the EXPERIENCE of being there, max 13 words",
-      "tip": "ONE natural, practical tip a friend would give, max 11 words"
+      "why": "what it's KNOWN FOR or its nickname — a REAL fact from the notes, max 7 words",
+      "detail": "WHERE it is / what's nearby / its size or setting — a REAL fact from the notes, max 7 words",
+      "tip": "a practical tip that FOLLOWS from those facts (getting there, season, bring cash, gear), max 7 words"
     }}
   ],
   "cta": "personal save/share line, max 8 words, no emoji"
 }}
-HARD RULES:
-- NEVER copy encyclopedic phrasing: no "urban area", "square kilometers", administrative dates,
-  "became a city", population numbers, founding years. Those read robotic and fake.
-- NEVER turn a date/number from the notes into a personal claim (no "I visited in 2001").
-- DO write what a visitor actually experiences: the harbor, the old streets, the seafood,
-  the empty sand, the light, the walk. Concrete and sensory.
-- Casual, like texting a friend. NO ad-speak ("discover", "unveil", "nestled", "breathtaking", "gem").
-- Tips must sound human, NOT start with "usually/often". Vary sentence length. Minimal emoji."""
+HARD RULES — FACTS ONLY:
+- "why" and "detail" MUST be real facts taken from the notes. If the notes say "4.5 km off
+  Sihanoukville, nicknamed Bamboo Island", good lines are "Nicknamed Bamboo Island" and
+  "4.5km off Sihanoukville". Do NOT invent anything absent from the notes.
+- NEVER invent sensory/personal color. BANNED: "seaweed wrapped around legs", "loud bird calls",
+  "I loved it here", "so peaceful", "quiet evenings", "amazing views", "bring a good book".
+- NEVER just restate the category (a beach / an island / a park) — give a distinguishing fact.
+- Only use numbers that appear in the notes (e.g. a distance). No invented population/date/price.
+- "tip" is the only line that may be advice; keep it plausible and derived from the facts
+  (remote island → "bring cash, few ATMs"; marine park → "pack snorkel gear"). No fake specifics.
+- If a place lacks a real fact for a field, write a SHORTER true one — never pad with fluff."""
 
 
 @dataclass
@@ -69,8 +76,19 @@ class TravelContent:
     subtitle: str
     cta: str
     region: str
-    places: list[dict] = field(default_factory=list)   # name, location, note, tip
+    places: list[dict] = field(default_factory=list)   # name, location, why, detail, tip, wiki_image
     sources: list[str] = field(default_factory=list)    # 검증 출처 URL
+    photo_credits: list[str] = field(default_factory=list)  # 위키미디어 사진 저작자표시
+
+
+def _nums(text: str) -> set[str]:
+    return set(re.findall(r"\d+(?:\.\d+)?", text or ""))
+
+
+def _numbers_grounded(line: str, extract: str) -> bool:
+    """line의 모든 숫자가 위키 추출문에 실재하면 True (없는 숫자=발명 → False)."""
+    ln = _nums(line)
+    return ln.issubset(_nums(extract)) if ln else True
 
 
 def _facts_block(verified: list[VerifiedPlace]) -> str:
@@ -111,16 +129,27 @@ def generate_travel(region: str = "Southeast Asia",
     places = []
     for vp in verified:
         w = written.get(vp.name.strip().lower(), {})
-        note = str(w.get("note", "")).strip()
-        if not note:
-            # LLM이 진정성 있게 쓰지 못한 장소(빈 note)는 제외 — 빈 카드 방지
-            log.info("빈 note 제외: %s", vp.name)
+        why = str(w.get("why", "")).strip()           # 위키 근거 사실 1
+        detail = str(w.get("detail", "")).strip()     # 위키 근거 사실 2
+        tip = str(w.get("tip", "")).strip()
+        # 숫자 자동검증: 위키 추출문에 없는 숫자를 담은 줄 제거 (LLM 숫자 발명 차단)
+        if why and not _numbers_grounded(why, vp.extract):
+            log.info("숫자 미검증 제거 why: %s | %s", vp.name, why); why = ""
+        if detail and not _numbers_grounded(detail, vp.extract):
+            log.info("숫자 미검증 제거 detail: %s | %s", vp.name, detail); detail = ""
+        if tip and not _numbers_grounded(tip, vp.extract):
+            log.info("숫자 미검증 제거 tip: %s | %s", vp.name, tip); tip = ""
+        if not (why or detail):
+            # 사실을 못 뽑은 장소는 제외 — 빈/막연 카드 방지
+            log.info("사실 부족 제외: %s", vp.name)
             continue
         places.append({
             "name": vp.name,
             "location": vp.country or w.get("location", ""),
-            "note": note,
-            "tip": str(w.get("tip", "")).strip(),
+            "why": why,
+            "detail": detail,
+            "tip": tip,
+            "wiki_image": vp.image_url,               # 위키백과 그 장소 실제 사진
         })
 
     return TravelContent(
@@ -135,34 +164,75 @@ def generate_travel(region: str = "Southeast Asia",
 
 def to_slides(content: TravelContent) -> list[Slide]:
     from cards.config import OUTPUT_DIR
-    from cards.photos import fetch_photo
+    from cards.photos import fetch_photo, download_url, commons_attribution
     cache = OUTPUT_DIR / "_placecache"
 
-    # HOOK 배경: 첫 장소 → 실패 시 지역 대표사진 폴백 (스크롤 정지용, 일반 훅이라 OK)
-    hook_img = None
-    if content.places:
-        first = content.places[0]
-        loc = str(first.get('location', '')).strip()
-        hook_img = fetch_photo(
-            f"{first.get('name','')} {loc}".strip(), cache, tag="hook",
-            fallbacks=[f"{loc} coast landscape", f"{loc} travel scenery", f"{loc} nature"])
+    import hashlib
+    region = str(content.region or "").strip()
     n = len(content.places)
+    loc0 = str(content.places[0].get("location", "")).strip() if content.places else ""
+
+    seen: set[str] = set()
+    def _uniq(photo):
+        """이미 쓴 이미지와 동일하면 None — 같은 사진/스톡 재사용 중복 방지."""
+        if not photo:
+            return None
+        try:
+            h = hashlib.md5(Path(photo).read_bytes()).hexdigest()
+        except Exception:
+            return photo
+        if h in seen:
+            return None
+        seen.add(h)
+        return photo
+
+    # 1) 리빌 사진 — 위키백과 '그 장소 실제 사진' 우선(정확성), 없으면 Unsplash 폴백.
+    #    특정 장소에 우선권을 줘서 훅이 스톡사진을 가로채 리빌이 비는 것 방지.
+    reveal_imgs = []
+    for i, p in enumerate(content.places, start=1):
+        name = str(p.get("name", "")).strip()
+        loc = str(p.get("location", "")).strip()
+        wiki = str(p.get("wiki_image", "")).strip()
+        img = None
+        if wiki:
+            img = _uniq(download_url(wiki, cache, tag=f"{i:02d}w"))
+            if img:
+                content.photo_credits.append(f"{name}: {commons_attribution(wiki)}")
+        if img is None:      # 위키사진 없음/중복 → Unsplash 키워드 (정확도 낮음)
+            img = _uniq(fetch_photo(f"{name} {loc}".strip(), cache, tag=f"{i:02d}"))
+        reveal_imgs.append(img)
+
+    # 2) 훅·티저는 '지역' 풍경 (특정 장소 아님 → 리빌과 의미상·이미지상 안 겹침). 중복이면 None
+    hook_img = _uniq(fetch_photo(
+        f"{region} beach landscape", cache, tag="hook",
+        fallbacks=[f"{region} coast", f"{region} tropical", f"{loc0} coastline"]))
+    teaser_img = _uniq(fetch_photo(
+        f"{loc0} village", cache, tag="teaser",
+        fallbacks=[f"{loc0} coast aerial", f"{region} scenery", f"{region} nature"]))
+
     slides: list[Slide] = [
         Slide(type="hook", badge=f"{n} HIDDEN GEMS" if n else "HIDDEN TRAVEL",
               title=content.title, subtitle=content.subtitle,
               image_path=hook_img, image_mode="cover"),
     ]
+    # 슬라이드 2도 훅 (IG는 안 넘기면 2번 재노출 → 여기서 저장 유도로 낚아챔)
+    teasers = ["You won't find these on Google",
+               "Most tourists never make it here",
+               "Save these before the crowds find them"]
+    slides.append(Slide(
+        type="hook", badge="",
+        title=teasers[n % len(teasers)],
+        subtitle="Save this for your next trip 💾",
+        image_path=teaser_img, image_mode="cover"))
     for i, p in enumerate(content.places, start=1):
-        body = [x for x in (p.get("note"), p.get("tip")) if x]
-        photo = fetch_photo(
-            f"{str(p.get('name','')).strip()} {str(p.get('location','')).strip()}".strip(),
-            cache, tag=f"{i:02d}")
+        # 저장가치(#11): 사실 2줄(위키근거) + 실용팁 1줄 — 발명 금지
+        body = [x for x in (p.get("why"), p.get("detail"), p.get("tip")) if x]
         slides.append(Slide(
             type="reveal", badge=f"{i:02d}",
             title=str(p.get("name", "")).strip(),
             subtitle=str(p.get("location", "")).strip(),
             body_lines=body,
-            image_path=photo, image_mode="cover",   # 실사진, 없으면 자동 폴백
+            image_path=reveal_imgs[i - 1], image_mode="cover",   # 실사진, 없으면 그라디언트
         ))
     slides.append(Slide(
         type="cta",

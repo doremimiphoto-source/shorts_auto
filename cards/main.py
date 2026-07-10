@@ -13,10 +13,11 @@ import argparse
 import datetime
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from cards.config import AFFILIATE_DISCLOSURE, HASHTAGS, LINKTREE_URL, VERTICAL_OUTPUT
+from cards.config import (AFFILIATE_DISCLOSURE, CHANNEL_TAG, HASHTAGS,
+                          LINKTREE_URL, VERTICAL_OUTPUT)
 from cards.db import (open_cards_db, record_upload, save_affiliate_link,
                       save_content, title_exists)
 from cards.renderer import CarouselRenderer, Slide
@@ -33,6 +34,34 @@ def _hashtag_str(vertical: str, n: int = 20) -> str:
     return " ".join(f"#{t}" for t in HASHTAGS.get(vertical, [])[:n])
 
 
+# ── Phase3: SEO 키워드 (실데이터 기반, LLM 불필요) ─────────────────────────────
+def _seo_travel(region: str, theme: str, places: list) -> tuple[str, list[str]]:
+    line = (f"{theme.strip().capitalize()} in {region} — hidden gems most tourists "
+            f"never find. A budget-friendly travel guide, off the beaten path.")
+    kws = ["hidden gems", f"{region} travel", "travel guide",
+           "off the beaten path", "budget travel", "secret spots"]
+    kws += [str(p.get("name", "")).strip() for p in places[:3] if p.get("name")]
+    return line, kws
+
+
+def _seo_kbeauty(category: str, products: list) -> tuple[str, list[str]]:
+    line = (f"The best Korean {category} worth trying — a K-beauty guide for glass "
+            f"skin, featuring cult-favorite Korean brands you can buy worldwide.")
+    kws = ["Korean skincare", "K-beauty", f"Korean {category}", "glass skin",
+           "skincare routine", "Korean beauty"]
+    kws += [p.brand_en for p in products[:3] if getattr(p, "brand_en", "")]
+    return line, kws
+
+
+def _seo_shopping(items: list) -> tuple[str, list[str]]:
+    line = ("AliExpress vs Amazon — the same products for way less. A budget shopping "
+            "guide to smart online finds and money-saving dupes.")
+    kws = ["AliExpress vs Amazon", "budget shopping", "money saving tips",
+           "online shopping", "Amazon dupes", "cheap finds"]
+    kws += [i.product_name for i in items[:3] if i.product_name]
+    return line, kws
+
+
 @dataclass
 class PinJob:
     """버티컬별로 채워서 _publish_pinterest 에 넘기는 업로드 작업."""
@@ -45,6 +74,9 @@ class PinJob:
     summary: str             # 핀 설명용 항목 요약
     partner: str             # 어필리에이트 파트너
     partner_base_url: str
+    seo_line: str = ""       # Phase3: 키워드 앞배치 자연문 (Pinterest 검색 랭킹용)
+    seo_keywords: list[str] = field(default_factory=list)  # Phase3: 검색어(실데이터)
+    photo_credits: list[str] = field(default_factory=list)  # 위키미디어 사진 저작자표시
 
 
 def _publish_pinterest(job: PinJob, *, dry_run: bool) -> int:
@@ -75,13 +107,15 @@ def _publish_pinterest(job: PinJob, *, dry_run: bool) -> int:
                         original_url=job.partner_base_url,
                         tracking_url=affiliate_url, utm_campaign=campaign)
 
-    # 핀 설명
+    # 핀 설명 (Phase3: 키워드 앞배치 = Pinterest 검색 랭킹). 500자 제한 안전 컷.
     description = (
-        f"{job.title}\n{job.subtitle}\n\n"
+        f"{job.title}\n\n"
+        f"{_seo_paragraph(job)}\n\n"
         f"📌 {job.summary}\n\n"
-        f"🔗 {LINKTREE_URL}\n\n"
-        f"{AFFILIATE_DISCLOSURE}\n\n{_hashtag_str(job.vertical)}"
+        f"{AFFILIATE_DISCLOSURE}\n\n{_hashtag_str(job.vertical, 6)}"
     )
+    if len(description) > 500:
+        description = description[:497].rstrip() + "…"
 
     pin_image = paths[0]   # HOOK 슬라이드 = 단일 정적 핀
     if dry_run:
@@ -115,17 +149,78 @@ def _publish_pinterest(job: PinJob, *, dry_run: bool) -> int:
         return 1
 
 
-def _build_caption(job: PinJob, affiliate_url: str) -> str:
-    """수동 게시용 캡션 (제목·요약·링크트리·어필리에이트 공시·해시태그)."""
-    return (
-        f"{job.title}\n{job.subtitle}\n\n"
-        f"📌 {job.summary}\n\n"
-        f"🔗 Links in bio: {LINKTREE_URL}\n\n"
+def _seo_paragraph(job: PinJob) -> str:
+    """키워드 앞배치 SEO 문단 (Pinterest/IG 검색 인덱싱용). 실데이터 키워드만."""
+    parts = []
+    if job.seo_line:
+        parts.append(job.seo_line)
+    kw = [k for k in (job.seo_keywords or []) if k][:8]
+    if kw:
+        parts.append(f"Great for: {', '.join(kw)}.")
+    return "\n".join(parts)
+
+
+def _build_captions(job: PinJob, affiliate_url: str) -> dict[str, str]:
+    """플랫폼별 최적화 캡션 (수동 게시용).
+
+    Pinterest = 검색엔진 → 키워드 우선, 해시태그 소수.
+    Instagram = 키워드 + 해시태그 다수(도달).  TikTok = 짧게 + 키워드 + 소수 태그.
+    어필리에이트 링크는 캡션 본문에서 제외(공시만) → 별도 [게시자 참고]로 표기.
+    """
+    seo = _seo_paragraph(job)
+    # 위키미디어 사진 사용 시 저작자표시(CC 준수). 전체 목록은 credits.txt.
+    credit_line = "📷 Photos: Wikimedia Commons & Unsplash\n" if job.photo_credits else ""
+    note = (f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
+            f"어필리에이트 링크: {affiliate_url}")
+
+    pinterest = (
+        f"{job.title}\n\n"
+        f"{seo}\n\n"
+        f"📌 In this list: {job.summary}\n\n"
+        f"🔗 {LINKTREE_URL}\n"
         f"{AFFILIATE_DISCLOSURE}\n\n"
-        f"{_hashtag_str(job.vertical)}\n\n"
-        f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
-        f"어필리에이트 링크: {affiliate_url}"
+        f"{credit_line}"
+        f"{_hashtag_str(job.vertical, 4)}\n\n"      # Pinterest: 키워드 우선·태그 소수
+        f"{note}"
     )
+    instagram = (
+        f"{job.title}\n{job.subtitle}\n\n"
+        f"{seo}\n\n"
+        f"📌 {job.summary}\n\n"
+        f"💾 Save it · 📤 Send to a friend · ➕ Follow {CHANNEL_TAG}\n"
+        f"🔗 Link in bio: {LINKTREE_URL}\n"
+        f"{AFFILIATE_DISCLOSURE}\n\n"
+        f"{credit_line}"
+        f"{_hashtag_str(job.vertical, 15)}\n\n"     # IG: 태그 도달 기여
+        f"{note}"
+    )
+    tiktok = (
+        f"{job.title} 👀\n"
+        f"{job.subtitle}\n\n"
+        f"💾 Save this before you forget\n"
+        f"🔗 {LINKTREE_URL}\n"
+        f"{AFFILIATE_DISCLOSURE}\n\n"
+        f"{credit_line}"
+        f"{_hashtag_str(job.vertical, 6)}\n\n"      # TikTok: 소수 태그 + 키워드
+        f"{note}"
+    )
+    return {"pinterest": pinterest, "instagram": instagram, "tiktok": tiktok}
+
+
+def _pinterest_five(slides: list[Slide]) -> list[Slide]:
+    """Pinterest 캐러셀 최대 5장 제한 → 훅(1) + 베스트 콘텐츠 4장.
+
+    티저(IG 재노출용 2번째 훅)·CTA는 제외. 실사진 있는 리빌을 우선 선별해
+    빈(그라디언트) 카드가 Pinterest 5장에 끼는 걸 방지 — 단, 거짓 사진은 넣지
+    않으므로 사진 있는 게 4개 미만이면 나머지는 그라디언트 카드로 채운다.
+    """
+    hook = slides[:1]                                       # 첫 슬라이드 = 메인 훅
+    content = [s for s in slides if s.type in ("reveal", "compare")]
+    has_img = [s for s in content if s.image_path and Path(s.image_path).exists()]
+    # 사진 있는 리빌이 있으면 그것만 (빈 카드 배제 → 3~5장). 사진 자체가 없는
+    # 버티컬(V1 비교=그라디언트 설계)은 원래대로 앞 4개.
+    picked = (has_img or content)[:4]
+    return (hook + picked)[:5]
 
 
 def run_export(job: PinJob) -> int:
@@ -135,14 +230,29 @@ def run_export(job: PinJob) -> int:
     out_dir = VERTICAL_OUTPUT[job.vertical] / f"export_{campaign}"
     renderer = CarouselRenderer()
 
+    affiliate_url = build_link(job.partner, platform="manual",
+                               vertical=job.short_vertical, campaign=campaign)
+    captions = _build_captions(job, affiliate_url)   # Phase3: 플랫폼별 최적화
+
     counts = {}
     for ratio in ("pinterest", "instagram", "tiktok"):
         paths = renderer.render(job.slides, ratio, out_dir / ratio)
+        # 각 플랫폼 폴더에 그 플랫폼용 캡션 (Pinterest=키워드, IG=태그, TikTok=짧게)
+        (out_dir / ratio / "caption.txt").write_text(captions[ratio], encoding="utf-8")
         counts[ratio] = len(paths)
 
-    affiliate_url = build_link(job.partner, platform="manual",
-                               vertical=job.short_vertical, campaign=campaign)
-    (out_dir / "caption.txt").write_text(_build_caption(job, affiliate_url), encoding="utf-8")
+    # 위키미디어 사진 저작자표시 전체 목록 (CC 준수 — 첫 댓글에 붙이기 권장)
+    if job.photo_credits:
+        (out_dir / "credits.txt").write_text(
+            "Photo credits (Wikimedia Commons):\n" + "\n".join(job.photo_credits),
+            encoding="utf-8")
+
+    # Pinterest 캐러셀은 최대 5장 → 훅+베스트4를 별도 폴더로 (그대로 올리면 끝)
+    five = _pinterest_five(job.slides)
+    p5_dir = out_dir / "pinterest" / "carousel5"
+    p5 = renderer.render(five, "pinterest", p5_dir)
+    (p5_dir / "caption.txt").write_text(captions["pinterest"], encoding="utf-8")
+    counts["carousel5"] = len(p5)
 
     # DB 기록 (중복 방지용 제목 저장)
     db = open_cards_db()
@@ -152,11 +262,11 @@ def run_export(job: PinJob) -> int:
 
     log.info("✅ 수동 게시용 내보내기 완료")
     print(f"\n📁 {out_dir}")
-    print(f"   ├─ pinterest/  ({counts.get('pinterest',0)}장, 2:3)")
-    print(f"   ├─ instagram/  ({counts.get('instagram',0)}장, 4:5)")
-    print(f"   ├─ tiktok/     ({counts.get('tiktok',0)}장, 9:16)")
-    print(f"   └─ caption.txt (제목·해시태그·공시)")
-    print(f"\n→ 각 플랫폼 앱에서 해당 비율 폴더 이미지 + caption 붙여넣기로 수동 게시")
+    print(f"   ├─ pinterest/  ({counts.get('pinterest',0)}장 2:3 + caption.txt · 키워드 우선)")
+    print(f"   │   └─ carousel5/ ({counts.get('carousel5',0)}장 · ⭐Pinterest는 이 폴더 그대로 올리기, 최대5장)")
+    print(f"   ├─ instagram/  ({counts.get('instagram',0)}장 4:5 + caption.txt · 키워드+해시태그)")
+    print(f"   └─ tiktok/     ({counts.get('tiktok',0)}장 9:16 + caption.txt · 짧게+키워드)")
+    print(f"\n→ Pinterest: pinterest/carousel5/ (5장) · IG/TikTok: 해당 폴더 10장 + caption.txt")
     return 0
 
 
@@ -165,12 +275,15 @@ def run_v2(*, count: int, region: str, theme: str, dry_run: bool, export: bool) 
     log.info("V2 여행 콘텐츠 생성: %s / %s", region, theme)
     c = generate_travel(region, theme, count=count)
     slides = to_slides(c)
+    seo_line, seo_kw = _seo_travel(region, theme, c.places)
     job = PinJob(
         vertical="v2_travel", short_vertical="v2",
         title=c.title, subtitle=c.subtitle, slides=slides,
         slides_json=slides_to_json(slides),
         summary=" · ".join(p.get("name", "") for p in c.places[:5]),
         partner="booking", partner_base_url="https://www.booking.com",
+        seo_line=seo_line, seo_keywords=seo_kw,
+        photo_credits=c.photo_credits,
     )
     return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
@@ -182,12 +295,14 @@ def run_v1(*, count: int, dry_run: bool, export: bool) -> int:
     c = generate_shopping(db_tmp, count=count)
     db_tmp.close()
     slides = to_slides(c)
+    seo_line, seo_kw = _seo_shopping(c.items)
     job = PinJob(
         vertical="v1_shopping", short_vertical="v1",
         title=c.title, subtitle=c.subtitle, slides=slides,
         slides_json=slides_to_json(slides),
         summary=" · ".join(i.product_name for i in c.items[:5]),
         partner="aliexpress", partner_base_url="https://www.aliexpress.com",
+        seo_line=seo_line, seo_keywords=seo_kw,
     )
     return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
@@ -197,12 +312,14 @@ def run_v3(*, count: int, category: str, dry_run: bool, export: bool) -> int:
     log.info("V3 K-뷰티 콘텐츠 생성: %s", category)
     c = generate_kbeauty(category, count=count)
     slides = to_slides(c)
+    seo_line, seo_kw = _seo_kbeauty(category, c.products)
     job = PinJob(
         vertical="v3_kbeauty", short_vertical="v3",
         title=c.title, subtitle=c.subtitle, slides=slides,
         slides_json=slides_to_json(slides),
         summary=" · ".join(p.name_en for p in c.products[:5]),
         partner="yesstyle", partner_base_url="https://www.yesstyle.com",
+        seo_line=seo_line, seo_keywords=seo_kw,
     )
     return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
