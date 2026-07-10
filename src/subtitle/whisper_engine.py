@@ -67,9 +67,9 @@ _TITLE_ANIM = (
 # hook : 슬라이드업 20px (1080→1060) + 페이드인 / 92px 흰 글자
 # body : 슬라이드업 55px (1115→1060) + 페이드인 / 70px 흰 글자
 # twist: 바운스 탄성 팝인 (0→108→97→101→100%) / 88px 웜 골드
-_TAG_HOOK  = r"{\an5\move(540,1080,540,1060,0,350)\fnGowun Dodum\fs92\c&H00FFFFFF&\3c&H00000000&\bord5\shad2\fad(300,200)}"
-_TAG_BODY  = r"{\an5\move(540,1115,540,1060,0,320)\fnGowun Dodum\fs70\c&H00FFFFFF&\3c&H00000000&\bord4\shad2\fad(220,200)}"
-_TAG_TWIST = r"{\an5\pos(540,1060)\fnGowun Dodum\fs88\c&H0066E0FF&\3c&H00000000&\bord5\shad2\fscx0\fscy0\t(0,180,\fscx108\fscy108)\t(180,290,\fscx97\fscy97)\t(290,390,\fscx101\fscy101)\t(390,430,\fscx100\fscy100)\fad(0,300)}"
+_TAG_HOOK  = r"{\an5\move(540,1080,540,1060,0,350)\fnGowun Dodum\fs92\c&H00FFFFFF&\3c&H00000000&\4c&H00000000&\bord7\shad4\blur0.8\fad(300,200)}"
+_TAG_BODY  = r"{\an5\move(540,1115,540,1060,0,320)\fnGowun Dodum\fs70\c&H00FFFFFF&\3c&H00000000&\4c&H00000000&\bord6\shad4\blur0.8\fad(220,200)}"
+_TAG_TWIST = r"{\an5\pos(540,1060)\fnGowun Dodum\fs88\c&H0066E0FF&\3c&H00000000&\4c&H00000000&\bord7\shad4\blur0.8\fscx0\fscy0\t(0,180,\fscx108\fscy108)\t(180,290,\fscx97\fscy97)\t(290,390,\fscx101\fscy101)\t(390,430,\fscx100\fscy100)\fad(0,300)}"
 
 # 강조 태그 (웜 골드 &H0066E0FF& = RGB 255·224·102, video_15 스타일)
 _EMPH_HOOK  = (r"{\c&H0066E0FF&\fs102\blur0}", r"{\c&H00FFFFFF&\fs92\blur0}")
@@ -245,16 +245,14 @@ def make_styled_subtitles(
         entries.append((th, kw_hook, len(hook)))
 
     if body:
-        # 문장 단위로 자막 블록 분리 — 첫째/둘째/셋째 각각 별도 블록
-        body_sents = _split_body_to_sentences(body)
-        per_w = len(body) / len(body_sents)
-        for sent in body_sents:
-            kw_sent = _wrap_text_lines(sent, _MAX_VW_BODY)
+        # 블록 분리: 문장 경계 + 서수어(첫째/둘째/셋째)마다 별도 + 너무 길면 쉼표(자연스러운 쉼)에서.
+        # 각 블록은 별도 시각에 표시 → 첫째→둘째→셋째 순차 노출. 길이 비례로 타이밍.
+        for blk in _split_body_to_blocks(body):
+            kw_sent = _wrap_text_lines(blk, _MAX_VW_BODY)
             if not kw_sent:
                 continue
-            kw_sent = _insert_ordinal_breaks(kw_sent)
             kw_sent = _apply_word_emphasis(kw_sent, emph_words, eb_o, eb_c)
-            entries.append((tb, kw_sent, per_w))
+            entries.append((tb, kw_sent, max(1, len(blk))))
 
     kw_twist = _wrap_text_lines(twist, _MAX_VW_TWIST)
     if kw_twist:
@@ -289,6 +287,56 @@ def make_styled_subtitles(
 
     _write_ass(out_ass, segments, extra_lines=extra)
     return SubtitleResult(srt_path=out_ass, segments=segments)
+
+
+_ORDINALS = ("첫째", "둘째", "셋째", "넷째", "다섯째", "여섯째")
+# 서수어가 (쉼표/공백) 앞에 오는 지점 앞에서 분리 (리스트 항목마다 독립 블록)
+_ORD_SPLIT_RE = _re.compile(r"(?=(?:" + "|".join(_ORDINALS) + r")[,\s])")
+
+
+def _split_at_commas(text: str, cap_vw: float) -> list[str]:
+    r"""쉼표(자연스러운 쉼)에서만 조각을 묶어 각 조각이 cap_vw 이내가 되게 분리.
+
+    쉼표가 없거나 이미 짧으면 원문 그대로. 문맥이 끊기지 않는 쉼표 경계만 사용한다.
+    """
+    if _vw(text) <= cap_vw or "," not in text:
+        return [text]
+    pieces = [p.strip() for p in text.split(",") if p.strip()]
+    out: list[str] = []
+    cur = ""
+    for p in pieces:
+        cand = f"{cur}, {p}" if cur else p
+        if cur and _vw(cand) > cap_vw:
+            out.append(cur)
+            cur = p
+        else:
+            cur = cand
+    if cur:
+        out.append(cur)
+    return out or [text]
+
+
+def _split_body_to_blocks(body: str) -> list[str]:
+    r"""body → 자막 블록 리스트.
+
+    분리 규칙 (전부 자연스러운 경계만 사용 — 문맥 훼손 금지):
+      1. 문장 경계(다/요/!?.) — 문단 끝/시작 분리
+      2. 서수어(첫째/둘째/…) 앞 — 리스트 항목마다 독립 블록
+      3. 그래도 3줄 용량 초과 시 쉼표에서만 추가 분리
+    """
+    sents = _re.split(r"(?<=[다요!?.])\s+", body.strip())
+    sents = [s.strip() for s in sents if s.strip()]
+    raw: list[str] = []
+    for s in sents:
+        for part in _ORD_SPLIT_RE.split(s):
+            part = part.strip().rstrip(" ,").strip()   # 연결 쉼표 정리
+            if part:
+                raw.append(part)
+    cap = _MAX_VW_BODY * 3   # 본문 3줄 용량
+    blocks: list[str] = []
+    for b in raw:
+        blocks.extend(_split_at_commas(b, cap))
+    return blocks or [body]
 
 
 def _split_body_to_sentences(body: str) -> list[str]:

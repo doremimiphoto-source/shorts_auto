@@ -1,93 +1,211 @@
 """콘텐츠 매칭 AI 배경 생성 (Pollinations AI — 무료, API 키 불필요).
 
-스크립트 hook/body/twist 내용 → 영문 이미지 프롬프트 → 1080×1920 배경 이미지 생성.
-생성 이미지 → 3초 루프 MP4 변환 → 렌더 파이프라인에 전달 (-stream_loop -1 로 루프).
-생성 실패(타임아웃·네트워크 오류) 시 None 반환 → 기존 풀 폴백.
+스크립트 hook/body/twist 내용 → **얼굴 없는** 공부 장면(책상·책·문구·손글씨) 프롬프트
+→ 여러 장 생성 → 크로스페이드로 이어 붙인 다중장면 배경 영상(1080×1920).
+단일 장면 실패/불가 시 None 반환 → render_stage에서 스톡 폴백.
+
+개선 이력(2026-07):
+  - 실사 느낌: "candid amateur photo / documentary / not cgi" + enhance=false
+  - 다중장면: 영상당 여러 장면 크로스페이드 → 60초 단조로움·3~9초 이탈 완화
+  - **얼굴 제거**: AI 얼굴/손 왜곡이 잦아 사람 얼굴을 빼고 책상·물건 위주로.
+    사람은 손글씨(손만, 얼굴 없음)로 약간만 → 왜곡 리스크 제거 + 콘텐츠 매칭 유지
+  - 반환 인터페이스(단일 Path)는 그대로 → composer 무변경
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
+log = logging.getLogger(__name__)
 
 
+# ── 생성 크기 = 영상 창(1080×1160, 거의 정사각) 비율 (강제 크롭·왜곡 방지) ──────
+# composer의 영상 윈도우는 1080×1160. 9:16으로 뽑으면 세로가 심하게 잘려 구도가 틀어짐.
+# → 창 비율(0.931)로 생성하고, composer가 Ken Burns만 얹도록.
+_GEN_W, _GEN_H = 1296, 1392   # 창 비율 유지 + 해상도 여유 (÷8, Pollinations 안전)
+_OUT_W, _OUT_H = 1080, 1160   # composer 영상 윈도우 크기
 
-# ── 한국 학생 맥락 프롬프트 (한국풍·내용매칭·seed 변형 다양성) ───────────────────
-# 사용자 요구: 외국/추상 이미지 대신 한국 학생 실사 장면, 내용과 매칭, 반복 없이.
-_KR_STYLE = (
-    "photorealistic candid editorial photography, realistic Korean student, "
-    "cinematic warm amber and soft teal color grade, shallow depth of field bokeh, "
-    "natural lighting, no text no watermark, no logo, vertical portrait 9:16"
+# ── 실사 스냅 스타일 (사람이 직접 찍은 사진 느낌, 얼굴 없음) ──────────────────────
+# 프롬프트를 과하게 길게 하면 Pollinations 실패율↑ → 핵심 큐만 간결하게.
+_STYLE = (
+    "candid amateur photo, natural window light, true-to-life colors, subtle film grain, "
+    "cozy korean study aesthetic, not cgi, no text, no watermark"
 )
+# 물건/책상 장면 — 사람 없음
+_NO_PERSON = "no people, no person, no face, still life"
 
-# 다양성용 세팅/앵글 변형 (seed로 선택 → 같은 주제라도 다른 장면)
+# 물건 중심 프레이밍 변형 (seed로 선택 → 같은 주제라도 다른 컷)
 _KR_SETTINGS = [
-    "at a tidy wooden desk at night under a warm amber desk lamp",
-    "by a large window with soft morning daylight streaming in",
-    "in a cozy study room with bookshelves softly blurred behind",
-    "at a clean minimal desk with neat stationery and colorful sticky notes",
-    "in a quiet apartment room with city night lights bokeh through the window",
-    "at a library-style desk with stacked textbooks and a small plant",
+    "top-down flat lay on a tidy wooden desk, soft daylight",
+    "close-up on the desk by a window with soft daylight",
+    "on a cozy desk with a small plant and warm afternoon light",
+    "45-degree angle on a neat desk, sticky notes around, morning light",
+    "on a light wooden desk with a bookshelf softly blurred behind",
+    "minimal tidy desk, soft shadows, gentle daylight",
 ]
 
-# 주제(키워드) → 한국 학생 장면 (내용 매칭). 모두 한국 맥락.
+# 주제(키워드) → **얼굴 없는** 공부 장면 (책상·물건 중심, 내용 매칭)
 _KR_TOPICS: list[tuple[list[str], str]] = [
     (["부적", "행운", "합격", "기원", "lucky"],
-     "a Korean middle school student in navy school uniform holding a good-luck exam charm with a hopeful smile"),
+     "a Korean good-luck exam charm (bujeok) placed on an open notebook on a desk"),
     (["멀리던지기", "멀리차기", "에어로빅", "줄넘기", "체육", "달리기"],
-     "a Korean middle school student in PE uniform mid-motion in a school gymnasium, energetic"),
+     "a jump rope, clean sneakers and a water bottle on a school gym floor"),
     (["도덕", "인성", "배려", "봉사"],
-     "a thoughtful Korean middle school student writing reflections in a notebook in a calm classroom"),
+     "an open notebook with neat handwritten reflections and a pen on a calm desk"),
     (["역사", "독후감", "한국사", "조선", "고려", "삼국", "임진왜란"],
-     "a Korean middle school student studying history, a Korean palace (Gyeongbokgung) poster softly visible on the wall"),
+     "an open Korean history textbook with sticky notes, a pen and a highlighter on a desk"),
     (["수학", "일차부등식", "방정식", "함수", "그래프", "도형", "확률"],
-     "a Korean middle school student solving math problems in a workbook, pencil in hand, concentrating"),
+     "an open math workbook full of handwritten equations with a pencil and eraser on a desk"),
     (["과학", "영양소", "광물", "실험", "세포", "화학", "물리"],
-     "a Korean middle school student in a school science lab with beakers, curious and focused"),
+     "science lab beakers, a small microscope and an open science notebook on a desk"),
     (["국어", "문학", "반어", "역설", "풍자", "서술형", "소설", "수필", "고전"],
-     "a Korean middle school student absorbed in reading a Korean literature book at a desk"),
+     "an open Korean literature book with reading glasses and a bookmark on a wooden desk"),
     (["음악", "칼림바", "리코더", "가창", "음악신문"],
-     "a Korean middle school student practicing a musical instrument in a bright music room"),
+     "sheet music, a wooden recorder and a kalimba on a bright desk"),
     (["영어", "영단어", "영어 듣기", "영어 쓰기", "english"],
-     "a Korean middle school student studying English with vocabulary flashcards at a desk"),
+     "English vocabulary flashcards and an open workbook with a pen on a desk"),
     (["한문", "한자", "성어", "중국어", "한어병음"],
-     "a Korean middle school student practicing Chinese characters with a brush pen, focused"),
+     "a brush pen, black ink and Chinese character practice sheets on a desk"),
     (["암기", "기억", "망각", "두문자", "연상", "외우", "플래시"],
-     "a Korean middle school student memorizing with colorful flashcards and sticky notes on the wall"),
+     "colorful flashcards and sticky notes spread across a desk and wall"),
     (["포모도로", "시간표", "플래너", "시간 관리", "계획", "루틴"],
-     "a Korean middle school student with a study planner and a small timer on a tidy desk"),
+     "an open study planner with a pen and a small round timer on a tidy desk"),
     (["수면", "밤새", "잠", "숙면", "해마", "졸음"],
-     "a Korean middle school student sleeping peacefully at a desk, gentle bedside lamp, textbooks beside them"),
+     "an open book and a dimmed warm desk lamp at night on a cozy desk"),
     (["슬럼프", "동기", "멘탈", "포기", "의지", "집중", "스트레스"],
-     "a determined Korean middle school student at a desk facing a sunrise window, motivational mood"),
+     "an open notebook with a short motivational note by a bright window at sunrise"),
     (["스마트폰", "sns", "유튜브", "인스타", "디지털", "게임"],
-     "a Korean middle school student setting down a smartphone to open a textbook, refocusing"),
+     "a smartphone set face-down next to an open textbook and a pen on a desk"),
     (["기출", "기말", "중간고사", "모의고사", "시험 대비", "수행평가", "내신", "벼락치기"],
-     "a Korean middle school student studying intensely for exams at a desk piled with textbooks, determined focus"),
+     "a desk piled with textbooks, highlighters and exam prep papers"),
 ]
 
-_KR_DEFAULT = ("a Korean middle school student in navy school uniform studying diligently, "
-               "focused and calm")
+_KR_DEFAULT = "a tidy study desk with an open notebook, a pen and warm daylight"
+
+# 사람 장면 — 얼굴 절대 없음 (손글씨·뒷모습·오버숄더). 사람 존재감 '약간'용.
+_PERSON_SCENES = [
+    ("a hand writing korean study notes in an open notebook on a wooden desk by a window, "
+     "close-up, only a hand visible, no face, no head"),
+    ("over-the-shoulder view from behind of a student writing in a notebook at a desk, "
+     "back of the head only, no face visible"),
+    ("back view of a student sitting at a tidy desk studying by a window, seen from behind, "
+     "no face, only the back and shoulders"),
+]
 
 
-def _build_prompt(script: dict, seed: int | None = None) -> str:
-    """스크립트 내용 → 한국 학생 장면 프롬프트 (내용 매칭 + seed 변형)."""
+def _match_scene(script: dict) -> str:
+    """스크립트 내용 → 가장 잘 맞는 얼굴 없는 공부 장면 (내용 매칭)."""
     full = " ".join([
         str(script.get("hook", "")), str(script.get("body", "")),
         str(script.get("twist", "")), str(script.get("title", "")),
         str(script.get("hook_pattern", "")),
     ]).lower()
-    scene = _KR_DEFAULT
-    for keywords, s in _KR_TOPICS:
+    for keywords, scene in _KR_TOPICS:
         if any(kw.lower() in full for kw in keywords):
-            scene = s
-            break
+            return scene
+    return _KR_DEFAULT
+
+
+def _object_prompt(scene: str, setting: str) -> str:
+    return f"{scene}, {setting}, {_NO_PERSON}, {_STYLE}"
+
+
+def _person_prompt(idx: int) -> str:
+    """얼굴 없는 사람 장면(손글씨/뒷모습/오버숄더) — seed로 회전."""
+    scene = _PERSON_SCENES[idx % len(_PERSON_SCENES)]
+    return f"{scene}, {_STYLE}"
+
+
+def _build_prompt(script: dict, seed: int | None = None) -> str:
+    """[호환용] 단일 장면(물건) 프롬프트 — 기존 호출부/테스트 유지."""
+    scene = _match_scene(script)
     setting = _KR_SETTINGS[(seed or 0) % len(_KR_SETTINGS)]
-    return f"{scene}, {setting}, {_KR_STYLE}"
+    return _object_prompt(scene, setting)
+
+
+def _fetch_image(prompt: str, out_path: Path, *, seed: int, timeout_sec: int,
+                 retries: int = 3) -> Path | None:
+    """Pollinations 실사 이미지 1장 다운로드 (재시도+백오프). 실패 시 None.
+
+    다중장면 생성 시 연속 요청 일부가 실패/타임아웃하므로 재시도로 성공률을 높인다.
+    enhance=false = 프롬프트에 충실한 원본(실사 톤).
+    """
+    if out_path.exists() and out_path.stat().st_size > 10_000:
+        return out_path
+    url = (
+        f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}"
+        f"?width={_GEN_W}&height={_GEN_H}&nologo=true&enhance=false&model=flux-realism&seed={seed}"
+    )
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ShortsAuto/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                data = resp.read()
+            if len(data) >= 10_000:
+                out_path.write_bytes(data)
+                return out_path
+        except Exception:
+            pass
+        if attempt < retries:
+            time.sleep(3.0 * (attempt + 1))   # 점증 백오프 (3·6·9s) — 부하/레이트리밋 완화
+    return None
+
+
+def _build_multiscene(imgs: list[Path], duration: int, out_path: Path,
+                      ffmpeg_bin: str) -> Path | None:
+    """N장 이미지(창 비율) → 크로스페이드 연결 → 1080×1160 영상.
+
+    생성 크기(1296×1392)와 출력(1080×1160)이 같은 비율이라 **왜곡 없이 축소만** 한다.
+    영상 모션(Ken Burns)은 composer가 얹으므로 여기선 장면 전환(크로스페이드)만 담당.
+    """
+    n = len(imgs)
+    if n == 0:
+        return None
+    xf = 0.8 if n > 1 else 0.0                       # 크로스페이드 길이(초)
+    seg = (duration + (n - 1) * xf) / n              # 장면당 길이 (겹침 보정)
+
+    cmd = [ffmpeg_bin, "-hide_banner", "-y"]
+    for img in imgs:
+        cmd += ["-loop", "1", "-t", f"{seg:.2f}", "-i", str(img)]
+
+    filters = []
+    for i in range(n):
+        # 창 비율 그대로 축소 (crop 없음 → 구도 보존, 강제 왜곡 제거)
+        filters.append(
+            f"[{i}:v]scale={_OUT_W}:{_OUT_H}:flags=lanczos,setsar=1,fps=30,"
+            f"format=yuv420p,setpts=PTS-STARTPTS[v{i}]"
+        )
+    if n == 1:
+        last = "v0"
+    else:
+        prev = "v0"
+        for i in range(1, n):
+            off = i * (seg - xf)
+            out = f"x{i}" if i < n - 1 else "vout"
+            filters.append(
+                f"[{prev}][v{i}]xfade=transition=fade:duration={xf}:offset={off:.2f}[{out}]"
+            )
+            prev = out
+        last = "vout"
+
+    cmd += [
+        "-filter_complex", ";".join(filters),
+        "-map", f"[{last}]",
+        "-t", str(duration), "-r", "30",
+        "-c:v", "libx264", "-crf", "18", "-preset", "fast",
+        "-pix_fmt", "yuv420p",
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=180, check=False)
+    if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size < 100_000:
+        return None
+    return out_path
 
 
 def generate_bg_video(
@@ -95,95 +213,50 @@ def generate_bg_video(
     cache_dir: Path,
     *,
     timeout_sec: int = 45,
-    duration: int = 35,
+    duration: int = 60,
     ffmpeg_bin: str = "ffmpeg",
     seed: int | None = None,
+    scenes: int = 3,
 ) -> Path | None:
-    """AI 이미지 생성 → 풀 길이 Ken Burns 판/줌 영상. 실패 시 None 반환.
+    """콘텐츠 매칭 실사 다중장면 배경(얼굴 없음) 생성. 실패 시 None.
 
-    - Pollinations AI(FLUX)로 1080×1920 이미지 생성
-    - scale 1.30× → crop 이동으로 35초 무루프 판 애니메이션
-    - 해시 마지막 자리로 이동 방향 다양화 (4방향)
-    - cache_dir에 프롬프트 해시 기반 캐시 → 동일 콘텐츠 재생성 방지
-    - seed: 영상별 고유 시드 → 같은 콘텐츠라도 매번 다른 이미지 (반복 제거)
+    - Pollinations(FLUX-realism, enhance=false)로 실사 스냅 N장 생성
+    - **얼굴 없이** 책상·물건 위주 + 한 장면은 손글씨(손만) → 왜곡 리스크 제거
+    - 장면마다 다른 프레이밍·seed → 같은 주제의 다른 컷처럼 변화
+    - 크로스페이드로 이어 붙여 60초 단조로움 완화 (3~9초 이탈 대응)
+    - seed: 영상별 고유 → 반복 제거 / 캐시로 재생성 방지
     """
-    # seed를 해시·URL·프롬프트에 반영 → 동일 콘텐츠라도 영상마다 다른 한국 장면
-    seed_val = int(seed) % 1_000_000 if seed is not None else None
-    prompt = _build_prompt(script, seed_val)
-    hash_src = f"{prompt}|seed={seed_val}" if seed_val is not None else prompt
-    content_hash = hashlib.sha256(hash_src.encode()).hexdigest()[:14]
-    img_path = cache_dir / f"aibg_{content_hash}.jpg"
-    vid_path = cache_dir / f"aibg_{content_hash}_full.mp4"
+    seed_val = int(seed) % 1_000_000 if seed is not None else 0
+    scene_prompt = _match_scene(script)
+    n = max(1, min(int(scenes), 4))
 
-    # ── 캐시 히트 (풀 비디오 ≥ 200 KB)
+    key = hashlib.sha256(
+        f"{scene_prompt}|seed={seed_val}|n={n}|faceless_winfit_v5".encode()).hexdigest()[:14]
+    vid_path = cache_dir / f"aibg_{key}_multi.mp4"
     if vid_path.exists() and vid_path.stat().st_size > 200_000:
         return vid_path
 
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Pollinations AI 이미지 생성
-    if not (img_path.exists() and img_path.stat().st_size > 10_000):
-        encoded = urllib.parse.quote(prompt)
-        url = (
-            f"https://image.pollinations.ai/prompt/{encoded}"
-            f"?width=1080&height=1920&nologo=true&enhance=true&model=flux-realism"
-        )
-        if seed_val is not None:
-            url += f"&seed={seed_val}"
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "ShortsAuto/1.0"})
-            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-                data = resp.read()
-            if len(data) < 10_000:
-                return None
-            img_path.write_bytes(data)
-        except Exception:
-            return None
-
-    if not img_path.exists() or img_path.stat().st_size < 10_000:
+    # 장면 이미지 N장 생성. 대부분 물건·책상, 중간 한 장은 얼굴 없는 사람(손글씨/뒷모습/오버숄더).
+    person_slot = 1 if n >= 3 else -1
+    imgs: list[Path] = []
+    for i in range(n):
+        s = (seed_val * 10 + i) % 1_000_000
+        if i == person_slot:
+            prompt = _person_prompt(seed_val + i)
+        else:
+            setting = _KR_SETTINGS[s % len(_KR_SETTINGS)]
+            prompt = _object_prompt(scene_prompt, setting)
+        if i > 0:
+            time.sleep(1.5)      # 요청 간 간격 — 연속 요청 실패율 완화
+        img = _fetch_image(prompt, cache_dir / f"aibg_{key}_{i}.jpg",
+                           seed=s, timeout_sec=timeout_sec)
+        if img:
+            imgs.append(img)
+    if not imgs:
         return None
+    if len(imgs) < n:
+        log.warning("일부 장면 생성 실패: %d/%d (나머지는 성공분으로 구성)", len(imgs), n)
 
-    # ── Ken Burns: scale 1.40× → crop 이동 (pan 애니메이션)
-    # 1.40× 스케일로 1080×1920 주변에 더 넓은 pan 여유 확보 (더 역동적인 움직임)
-    sw = 1512   # 1080 * 1.40 (짝수)
-    sh = 2688   # 1920 * 1.40 (짝수)
-    xp = sw - 1080   # 432px pan 폭
-    yp = sh - 1920   # 768px pan 높이
-    d  = duration
-
-    # 해시 마지막 16진수로 4방향 중 선택 → 콘텐츠마다 다른 이동 패턴
-    pan_dir = int(content_hash[-1], 16) % 4
-    if pan_dir == 0:
-        xe = f"min({xp}*t/{d},{xp})"        # 좌→우
-        ye = f"min({yp}*t/{d},{yp})"        # 상→하 (대각)
-    elif pan_dir == 1:
-        xe = f"max({xp}-{xp}*t/{d},0)"      # 우→좌
-        ye = f"max({yp}-{yp}*t/{d},0)"      # 하→상 (역대각)
-    elif pan_dir == 2:
-        xe = f"min({xp}*t/{d},{xp})"        # 좌→우
-        ye = f"{yp // 2}"                   # 수평 이동 (중앙 Y 고정)
-    else:
-        xe = f"{xp // 2}"                   # 중앙 X 고정
-        ye = f"min({yp}*t/{d},{yp})"        # 수직 이동 (상→하)
-
-    vf = (
-        f"scale={sw}:{sh}:flags=lanczos,"
-        f"crop=1080:1920:x='{xe}':y='{ye}',"
-        f"setsar=1"
-    )
-
-    cmd = [
-        ffmpeg_bin, "-hide_banner", "-y",
-        "-loop", "1", "-i", str(img_path),
-        "-vf", vf,
-        "-t", str(d),
-        "-r", "30",
-        "-c:v", "libx264", "-crf", "18", "-preset", "fast",
-        "-pix_fmt", "yuv420p",
-        str(vid_path),
-    ]
-    result = subprocess.run(cmd, capture_output=True, timeout=180, check=False)
-    if result.returncode != 0 or not vid_path.exists() or vid_path.stat().st_size < 100_000:
-        return None
-
-    return vid_path
+    return _build_multiscene(imgs, duration, vid_path, ffmpeg_bin)

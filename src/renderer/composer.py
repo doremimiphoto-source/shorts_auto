@@ -158,22 +158,24 @@ class VideoComposer:
         bot_y = top_y + vid_h     # 1640
         bot_h = _LAYOUT_BOT_H     # 280
 
-        contrast   = round(self.rng.uniform(1.05, 1.20), 3)
-        saturation = round(self.rng.uniform(1.10, 1.40), 3)
-        brightness = round(self.rng.uniform(-0.02, 0.03), 3)
-        crop_y_expr = f"(ih-{vid_h})*{round(self.rng.uniform(0.0, 1.0), 3)}"
+        # 실사 톤 유지 — 과한 채도·오렌지 억제 (AI/실사 배경이 인위적으로 안 보이게)
+        contrast   = round(self.rng.uniform(1.02, 1.08), 3)
+        saturation = round(self.rng.uniform(1.00, 1.08), 3)
+        brightness = round(self.rng.uniform(-0.01, 0.02), 3)
+        # 중앙 근처 크롭(0.30~0.46) — 인물 얼굴이 잘리지 않게 (기존 랜덤 0~1은 머리 잘림)
+        crop_y_expr = f"(ih-{vid_h})*{round(0.30 + self.rng.uniform(0.0, 0.16), 3)}"
 
-        # Warm LUT (시네마틱 오렌지-틸 톤)
+        # 아주 옅은 웜 그레이드 (identity 근처 — 자연스러운 사진 톤 보존)
         warm_lut = (
             "curves="
-            "r='0/0 0.25/0.27 0.75/0.80 1/1.0':"
-            "g='0/0 0.25/0.24 0.75/0.73 1/0.97':"
-            "b='0/0.03 0.25/0.21 0.75/0.66 1/0.87'"
+            "r='0/0 0.5/0.52 1/1.0':"
+            "g='0/0 0.5/0.50 1/1.0':"
+            "b='0/0.02 0.5/0.48 1/0.95'"
         )
         eq_filter = (
             f"eq=contrast={contrast}:saturation={saturation}:brightness={brightness},"
             f"{warm_lut},"
-            f"vignette=angle=PI/5"
+            f"vignette=angle=PI/4"
         )
 
         # Ken Burns: 110% 확대 후 천천히 가로 패닝 (방향 랜덤)

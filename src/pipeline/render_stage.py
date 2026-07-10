@@ -13,7 +13,8 @@ from pathlib import Path
 
 from ..utils.ffmpeg_path import resolve_ffmpeg as _resolve_ffmpeg
 from ..renderer.assets import AssetSelector
-from ..renderer.composer import RenderConfig, RenderInput, VideoComposer, extract_pastel_bar_color
+from ..renderer.composer import (RenderConfig, RenderInput, VideoComposer,
+                                 extract_pastel_bar_color, _probe_audio_duration)
 from .context import PipelineContext, StageError, StageSkipped, stage_timer
 
 
@@ -50,6 +51,8 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
             #   false:      스톡 풀 우선 → 비면 AI 폴백 (기존 동작)
             ai_cache_dir = ctx.project_root / "output" / "aibg_cache"
             ai_primary = bool(renderer_cfg.get("background", {}).get("ai_primary", True))
+            # 실제 오디오 길이에 맞춘 배경 → 다중장면이 영상 안에 모두 표시되도록
+            audio_dur = _probe_audio_duration(audio_path)
 
             def _stock_bg():
                 return (_select_content_bg(bg_dir, script, au)
@@ -57,7 +60,7 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
                         or selector.select_bg_video())
 
             if ai_primary:
-                bg_video = _try_ai_bg(script, ai_cache_dir, ctx, seed=video_id)
+                bg_video = _try_ai_bg(script, ai_cache_dir, ctx, seed=video_id, audio_dur=audio_dur)
                 source = "ai_primary"
                 if bg_video is None:
                     bg_video = _stock_bg()
@@ -66,7 +69,7 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
                 bg_video = _stock_bg()
                 source = "pool_primary"
                 if bg_video is None:
-                    bg_video = _try_ai_bg(script, ai_cache_dir, ctx, seed=video_id)
+                    bg_video = _try_ai_bg(script, ai_cache_dir, ctx, seed=video_id, audio_dur=audio_dur)
                     source = "ai_fallback"
             ctx.log.info("bg_source", source=source,
                          path=bg_video.name if bg_video else "none")
@@ -187,17 +190,20 @@ def run(ctx: PipelineContext, *, video_id: int) -> Path:
 
 
 
-def _try_ai_bg(script: dict | None, cache_dir: Path, ctx, *, seed: int | None = None) -> Path | None:
-    """AI 콘텐츠 매칭 배경 생성 시도. 실패 시 None 반환.
+def _try_ai_bg(script: dict | None, cache_dir: Path, ctx, *, seed: int | None = None,
+               audio_dur: float = 60.0) -> Path | None:
+    """AI 콘텐츠 매칭 실사 다중장면 배경 생성 시도. 실패 시 None 반환.
 
     seed: 영상별 고유 시드 → 같은 콘텐츠라도 매번 다른 이미지 (반복 제거).
+    audio_dur: 실제 나레이션 길이 → 배경 길이를 맞춰 다중장면이 모두 표시되게.
     """
     if script is None:
         return None
     try:
         from ..renderer.bg_generator import generate_bg_video
-        # duration=60: 영상 최대 길이(58s)를 한 번의 팬으로 커버 → 루프 점프 없음
-        return generate_bg_video(script, cache_dir, seed=seed, duration=60)
+        # 배경 길이 = 오디오 길이 +1s (composer가 -shortest로 컷). 8~60s 범위로 클램프.
+        dur = max(8, min(60, int(audio_dur) + 1))
+        return generate_bg_video(script, cache_dir, seed=seed, duration=dur)
     except Exception as e:
         ctx.log.warning("ai_bg_failed", error=repr(e))
         return None
