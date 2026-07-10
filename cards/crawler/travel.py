@@ -22,14 +22,23 @@ from cards.renderer import Slide
 log = logging.getLogger(__name__)
 
 # ── 1단계: 후보 제안 (사실 발명 금지 — 이름·국가만) ──────────────────────────
-_CANDIDATES_PROMPT = """You are a well-traveled person listing REAL but lesser-known destinations.
+_CANDIDATES_PROMPT = """You are a well-traveled person listing REAL but lesser-known TRAVEL DESTINATIONS.
 Region: {region}
 Type: {theme}
 
-List {n} REAL places you are confident actually exist (lesser-known, not the famous tourist spots).
+List {n} REAL places a traveler can actually VISIT and that MATCH the Type above.
+Each must be a specific geographic destination — an island, a beach, a coastal town, a village, or a small town.
+
 Return STRICT JSON only:
 {{"candidates": [{{"name": "exact place name as on a map", "country": "country"}}]}}
-Rules: Only real, verifiable places. NO invented names. NO made-up resorts. {n} items."""
+
+HARD RULES:
+- Must be a SPECIFIC visitable place that fits "{theme}". If the Type is beaches/coast, list islands,
+  beaches, or coastal towns — NOT inland parks, mountains, or cities without a beach.
+- BANNED (these are NOT destinations): generic concepts, structure types, activities, dishes, categories.
+  e.g. NOT "kelong" (a type of fishing platform), NOT "snorkeling" (an activity), NOT a food or a technique.
+- Only real, verifiable places on a map. NO invented names, NO made-up resorts.
+- {n} items."""
 
 # ── 2단계: 검증된 사실로 1인칭 작성 ───────────────────────────────────────────
 _WRITE_PROMPT = """You write a SAVE-WORTHY travel guide card for a global English audience.
@@ -91,6 +100,37 @@ def _numbers_grounded(line: str, extract: str) -> bool:
     return ln.issubset(_nums(extract)) if ln else True
 
 
+# 위키 description/extract로 '방문 가능한 장소'인지 판별 (Kelong·요리·활동 등 배제)
+_PLACE_WORDS = (
+    "island", "islet", "atoll", "archipelago", "beach", "bay", "cove", "lagoon", "cape",
+    "coast", "coastal", "peninsula", "headland", "seaside", "isle", "port", "harbour", "harbor",
+    "town", "city", "village", "hamlet", "commune", "municipality", "parish", "province",
+    "district", "region", "county", "settlement", "locality", "resort", "national park",
+    "park", "reserve", "waterfall", "lake", "mountain", "valley", "gorge", "canyon", "oasis",
+    "hot spring", "cave", "temple", "old town",
+)
+_NONPLACE_WORDS = (
+    "platform", "dish", "cuisine", "food", "drink", "beverage", "recipe", "practice",
+    "technique", "method", "swimming", "sport", "game", "species", "genus", "genre",
+    "software", "app", "company", "brand", "structure", "festival", "language", "dance",
+    "song", "ritual", "concept", "type of", "style of",
+)
+
+
+def _is_visitable(vp: VerifiedPlace) -> bool:
+    """위키 설명이 실제 방문 가능한 장소를 가리키면 True. 개념·구조물·요리·활동은 False."""
+    desc = (vp.description or "").lower()
+    if desc:
+        if any(w in desc for w in _NONPLACE_WORDS):
+            return False
+        return any(w in desc for w in _PLACE_WORDS)
+    # description 없으면 extract 첫 문장으로 보조 판단
+    ex = (vp.extract or "").lower()[:160]
+    if any(w in ex for w in _NONPLACE_WORDS):
+        return False
+    return any(w in ex for w in _PLACE_WORDS)
+
+
 def _facts_block(verified: list[VerifiedPlace]) -> str:
     lines = []
     for vp in verified:
@@ -112,11 +152,19 @@ def generate_travel(region: str = "Southeast Asia",
         raise ValueError("LLM이 후보를 반환하지 않음")
     log.info("후보 %d개 제안됨", len(candidates))
 
-    # 2. 사실 검증 (미검증 폐기)
-    verified = verify_many(candidates, need=count)
+    # 2. 사실 검증 (미검증 폐기) — 필터 탈락 대비 버퍼 확보
+    verified = verify_many(candidates, need=count + 4)
+    # 2-b. 방문 가능한 '목적지'만 (Kelong·요리·활동·개념 등 드리프트 배제)
+    kept = []
+    for vp in verified:
+        if _is_visitable(vp):
+            kept.append(vp)
+        else:
+            log.info("비-목적지 배제: %s (%s)", vp.name, vp.description or vp.extract[:40])
+    verified = kept[:count]
     if len(verified) < 1:
-        raise ValueError("검증 통과 장소 0개 — 재시도 필요")
-    log.info("검증 통과 %d/%d", len(verified), count)
+        raise ValueError("검증 통과 목적지 0개 — 재시도 필요")
+    log.info("검증+목적지 통과 %d개", len(verified))
 
     # 3. 검증된 사실로 1인칭 작성
     write_data = generate_json(

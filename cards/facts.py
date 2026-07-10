@@ -34,6 +34,7 @@ class VerifiedPlace:
     wiki_url: str
     source: str          # 'wikipedia' | 'nominatim'
     image_url: str = ""  # 위키백과 그 장소의 실제 대표사진 (정확성 — Unsplash보다 우선)
+    description: str = "" # 위키 짧은 설명 ("Island in Cambodia" 등) — 방문가능 장소 판별용
 
 
 def _get_json(url: str, *, timeout: int = 15) -> dict | list | None:
@@ -86,6 +87,7 @@ def _wikipedia(name: str, expected_country: str = "") -> VerifiedPlace | None:
         wiki_url=(data.get("content_urls", {}).get("desktop", {}).get("page", "")),
         source="wikipedia",
         image_url=img,
+        description=desc,
     )
 
 
