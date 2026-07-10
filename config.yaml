@@ -11,8 +11,8 @@ app:
 
 # ---------- 파이프라인 (FR-7) ----------
 pipeline:
-  daily_target_count: 4                # 일 업로드 상한 = 스케줄 배치 수와 동일 (07·15:30·18·22시)
-  schedule_times: ["06:00", "14:30", "17:30", "21:00"]   # KST 기준 실행 시각 — 중학생 피크 30~60분 전 선업로드
+  daily_target_count: 4                # 일 업로드 상한 = 스케줄 배치 수와 동일 (12:30·14:30·17:30·21시)
+  schedule_times: ["12:30", "14:30", "17:30", "21:00"]   # KST 실행 시각 (실제 launchd와 일치). 코드 미참조·표기용 — 실제 스케줄은 launchd plist
   upload_jitter_minutes: 20            # 업로드 간격 ±20분 랜덤화 (FR-6.9)
   lock_file: data/pipeline.lock
   killswitch_file: data/killswitch.flag
