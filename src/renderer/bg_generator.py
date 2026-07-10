@@ -50,43 +50,48 @@ _KR_SETTINGS = [
     "minimal tidy desk, soft shadows, gentle daylight",
 ]
 
-# 주제(키워드) → **얼굴 없는** 공부 장면 (책상·물건 중심, 내용 매칭)
-_KR_TOPICS: list[tuple[list[str], str]] = [
-    (["부적", "행운", "합격", "기원", "lucky"],
+# 주제(키, 키워드, 얼굴없는 장면). 키 = 풀 폴더명 (assets/bg_ai_pool/<키>/).
+_KR_TOPICS: list[tuple[str, list[str], str]] = [
+    ("charm", ["부적", "행운", "합격", "기원", "lucky"],
      "a Korean good-luck exam charm (bujeok) placed on an open notebook on a desk"),
-    (["멀리던지기", "멀리차기", "에어로빅", "줄넘기", "체육", "달리기"],
+    ("pe", ["멀리던지기", "멀리차기", "에어로빅", "줄넘기", "체육", "달리기"],
      "a jump rope, clean sneakers and a water bottle on a school gym floor"),
-    (["도덕", "인성", "배려", "봉사"],
+    ("ethics", ["도덕", "인성", "배려", "봉사"],
      "an open notebook with neat handwritten reflections and a pen on a calm desk"),
-    (["역사", "독후감", "한국사", "조선", "고려", "삼국", "임진왜란"],
+    ("history", ["역사", "독후감", "한국사", "조선", "고려", "삼국", "임진왜란"],
      "an open Korean history textbook with sticky notes, a pen and a highlighter on a desk"),
-    (["수학", "일차부등식", "방정식", "함수", "그래프", "도형", "확률"],
+    ("math", ["수학", "일차부등식", "방정식", "함수", "그래프", "도형", "확률"],
      "an open math workbook full of handwritten equations with a pencil and eraser on a desk"),
-    (["과학", "영양소", "광물", "실험", "세포", "화학", "물리"],
+    ("science", ["과학", "영양소", "광물", "실험", "세포", "화학", "물리"],
      "science lab beakers, a small microscope and an open science notebook on a desk"),
-    (["국어", "문학", "반어", "역설", "풍자", "서술형", "소설", "수필", "고전"],
+    ("korean", ["국어", "문학", "반어", "역설", "풍자", "서술형", "소설", "수필", "고전"],
      "an open Korean literature book with reading glasses and a bookmark on a wooden desk"),
-    (["음악", "칼림바", "리코더", "가창", "음악신문"],
+    ("music", ["음악", "칼림바", "리코더", "가창", "음악신문"],
      "sheet music, a wooden recorder and a kalimba on a bright desk"),
-    (["영어", "영단어", "영어 듣기", "영어 쓰기", "english"],
+    ("english", ["영어", "영단어", "영어 듣기", "영어 쓰기", "english"],
      "English vocabulary flashcards and an open workbook with a pen on a desk"),
-    (["한문", "한자", "성어", "중국어", "한어병음"],
+    ("hanja", ["한문", "한자", "성어", "중국어", "한어병음"],
      "a brush pen, black ink and Chinese character practice sheets on a desk"),
-    (["암기", "기억", "망각", "두문자", "연상", "외우", "플래시"],
+    ("memorize", ["암기", "기억", "망각", "두문자", "연상", "외우", "플래시"],
      "colorful flashcards and sticky notes spread across a desk and wall"),
-    (["포모도로", "시간표", "플래너", "시간 관리", "계획", "루틴"],
+    ("planner", ["포모도로", "시간표", "플래너", "시간 관리", "계획", "루틴"],
      "an open study planner with a pen and a small round timer on a tidy desk"),
-    (["수면", "밤새", "잠", "숙면", "해마", "졸음"],
+    ("sleep", ["수면", "밤새", "잠", "숙면", "해마", "졸음"],
      "an open book and a dimmed warm desk lamp at night on a cozy desk"),
-    (["슬럼프", "동기", "멘탈", "포기", "의지", "집중", "스트레스"],
+    ("motivation", ["슬럼프", "동기", "멘탈", "포기", "의지", "집중", "스트레스"],
      "an open notebook with a short motivational note by a bright window at sunrise"),
-    (["스마트폰", "sns", "유튜브", "인스타", "디지털", "게임"],
+    ("phone", ["스마트폰", "sns", "유튜브", "인스타", "디지털", "게임"],
      "a smartphone set face-down next to an open textbook and a pen on a desk"),
-    (["기출", "기말", "중간고사", "모의고사", "시험 대비", "수행평가", "내신", "벼락치기"],
+    ("exam", ["기출", "기말", "중간고사", "모의고사", "시험 대비", "수행평가", "내신", "벼락치기"],
      "a desk piled with textbooks, highlighters and exam prep papers"),
 ]
 
+_KR_DEFAULT_KEY = "default"
 _KR_DEFAULT = "a tidy study desk with an open notebook, a pen and warm daylight"
+
+# 얼굴없는 배경 이미지 사전생성 풀 (렌더타임 Pollinations 의존 제거)
+_POOL_DIR = Path(__file__).resolve().parents[2] / "assets" / "bg_ai_pool"
+_PERSON_KEY = "_person"
 
 # 사람 장면 — 얼굴 절대 없음 (손글씨·뒷모습·오버숄더). 사람 존재감 '약간'용.
 _PERSON_SCENES = [
@@ -99,17 +104,52 @@ _PERSON_SCENES = [
 ]
 
 
-def _match_scene(script: dict) -> str:
-    """스크립트 내용 → 가장 잘 맞는 얼굴 없는 공부 장면 (내용 매칭)."""
+def _match_topic(script: dict) -> tuple[str, str]:
+    """스크립트 내용 → (주제 키, 얼굴없는 장면). 미매칭 시 default."""
     full = " ".join([
         str(script.get("hook", "")), str(script.get("body", "")),
         str(script.get("twist", "")), str(script.get("title", "")),
         str(script.get("hook_pattern", "")),
     ]).lower()
-    for keywords, scene in _KR_TOPICS:
+    for key, keywords, scene in _KR_TOPICS:
         if any(kw.lower() in full for kw in keywords):
-            return scene
-    return _KR_DEFAULT
+            return key, scene
+    return _KR_DEFAULT_KEY, _KR_DEFAULT
+
+
+def _match_scene(script: dict) -> str:
+    """[호환용] 장면만 반환."""
+    return _match_topic(script)[1]
+
+
+def _pool_list(key: str) -> list[Path]:
+    d = _POOL_DIR / key
+    if not d.exists():
+        return []
+    return sorted(p for p in d.glob("*.jpg") if p.stat().st_size > 8_000)
+
+
+def _pick_from_pool(key: str, seed: int, n: int) -> list[Path]:
+    """사전생성 풀에서 N장 선택 (물건 위주 + 사람 1). 풀 부족 시 []."""
+    objs = _pool_list(key) or _pool_list(_KR_DEFAULT_KEY)
+    if not objs:
+        return []
+    persons = _pool_list(_PERSON_KEY)
+    want_person = n >= 3 and bool(persons)
+    n_obj = n - 1 if want_person else n
+    # seed로 서로 다른 조합 선택 (중복 없이 회전)
+    chosen: list[Path] = []
+    for i in range(min(n_obj, len(objs))):
+        chosen.append(objs[(seed + i * 7) % len(objs)])
+    # 중복 제거 (풀이 작을 때)
+    seen = set(); uniq = []
+    for p in chosen:
+        if p not in seen:
+            seen.add(p); uniq.append(p)
+    chosen = uniq
+    if want_person:
+        chosen.insert(min(1, len(chosen)), persons[seed % len(persons)])
+    return chosen[:n]
 
 
 def _object_prompt(scene: str, setting: str) -> str:
@@ -220,27 +260,35 @@ def generate_bg_video(
 ) -> Path | None:
     """콘텐츠 매칭 실사 다중장면 배경(얼굴 없음) 생성. 실패 시 None.
 
-    - Pollinations(FLUX-realism, enhance=false)로 실사 스냅 N장 생성
-    - **얼굴 없이** 책상·물건 위주 + 한 장면은 손글씨(손만) → 왜곡 리스크 제거
-    - 장면마다 다른 프레이밍·seed → 같은 주제의 다른 컷처럼 변화
-    - 크로스페이드로 이어 붙여 60초 단조로움 완화 (3~9초 이탈 대응)
+    소스 우선순위 (렌더타임 API 의존 최소화):
+      1) 사전생성 풀(assets/bg_ai_pool/<주제>/) — Pollinations 무호출 (안정)
+      2) 풀 부족 시 Pollinations 라이브 생성 (기존)
+    - **얼굴 없이** 책상·물건 위주 + 한 장면은 얼굴없는 사람(손글씨/뒷모습/오버숄더)
+    - 크로스페이드 다중장면 → 60초 단조로움·3~9초 이탈 완화
     - seed: 영상별 고유 → 반복 제거 / 캐시로 재생성 방지
     """
     seed_val = int(seed) % 1_000_000 if seed is not None else 0
-    scene_prompt = _match_scene(script)
+    topic_key, scene_prompt = _match_topic(script)
     n = max(1, min(int(scenes), 4))
 
     key = hashlib.sha256(
-        f"{scene_prompt}|seed={seed_val}|n={n}|faceless_winfit_v5".encode()).hexdigest()[:14]
+        f"{topic_key}|seed={seed_val}|n={n}|pool_v6".encode()).hexdigest()[:14]
     vid_path = cache_dir / f"aibg_{key}_multi.mp4"
     if vid_path.exists() and vid_path.stat().st_size > 200_000:
         return vid_path
 
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # 장면 이미지 N장 생성. 대부분 물건·책상, 중간 한 장은 얼굴 없는 사람(손글씨/뒷모습/오버숄더).
+    # 1) 사전생성 풀 우선 (Pollinations 무호출 → 렌더 안정)
+    imgs = _pick_from_pool(topic_key, seed_val, n)
+    if imgs:
+        log.info("bg 풀 사용: topic=%s, %d장", topic_key, len(imgs))
+        return _build_multiscene(imgs, duration, vid_path, ffmpeg_bin)
+
+    # 2) 풀 부족 → Pollinations 라이브 생성 (기존 폴백)
+    log.info("bg 풀 없음(topic=%s) → 라이브 생성 시도", topic_key)
     person_slot = 1 if n >= 3 else -1
-    imgs: list[Path] = []
+    imgs = []
     for i in range(n):
         s = (seed_val * 10 + i) % 1_000_000
         if i == person_slot:
