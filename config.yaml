@@ -465,7 +465,7 @@ uploader:
 # ---------- 카드 이미지 생성 ----------
 image_stage:
   enabled: true
-  output_dir: output/cards          # PNG 저장 경로 (video_path 옆에 보관)
+  output_dir: output/thumbnails     # 쇼츠 썸네일 PNG 경로 (카드 콘텐츠 output/cards와 분리)
   layout: auto                      # auto | shock_fact | number_stat
 
 # ---------- 로깅·모니터링 (FR-8) ----------
