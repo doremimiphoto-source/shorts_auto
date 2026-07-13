@@ -270,7 +270,8 @@ def run_export(job: PinJob) -> int:
     """수동 게시용 내보내기 — 전체 캐러셀을 3비율로 렌더 + caption.txt. 업로드/API 없음."""
     from cards.affiliate.links import build_link
     campaign = _campaign_id()
-    folder = f"export_{campaign}_{job.label}" if job.label else f"export_{campaign}"
+    _lbl = job.label.replace(" ", "_").strip("_") if job.label else ""
+    folder = f"export_{campaign}_{_lbl}" if _lbl else f"export_{campaign}"
     out_dir = VERTICAL_OUTPUT[job.vertical] / folder
     renderer = CarouselRenderer()
 
