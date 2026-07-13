@@ -171,11 +171,12 @@ def _build_captions(job: PinJob, affiliate_url: str) -> dict[str, str]:
     # 위키미디어 사진 사용 시 저작자표시(CC 준수). 전체 목록은 credits.txt.
     credit_line = "📷 Photos: Wikimedia Commons & Unsplash\n" if job.photo_credits else ""
     # IG/TikTok = 링크가 bio 1개뿐 → Linktree. Pinterest = 핀마다 직접 링크(리다이렉트 금지).
-    bio_note = (f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
-                f"어필리에이트 링크(프로필 bio에): {affiliate_url}")
-    pin_note = (f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
-                f"핀 destination 링크에 이 URL 그대로 입력: {affiliate_url}\n"
-                f"⚠️ Linktree·단축·리다이렉트 URL 금지 (Pinterest 스팸 차단). 직접 어필리 URL만.")
+    bio_note = ("---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
+                "프로필 bio에 어필리에이트 링크 (AliExpress Portals 등에서 생성).")
+    pin_note = ("---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
+                "핀 destination 링크 = 본인 어필리에이트 링크 (AliExpress Portals에서 이 브랜드/제품 링크 생성).\n"
+                "⚠️ Linktree·단축·리다이렉트 URL 금지 (Pinterest 스팸 차단). 직접 어필리 URL만.\n"
+                f"(시스템 참고 링크: {affiliate_url})")
 
     pinterest = (
         f"{job.title}\n\n"
@@ -367,7 +368,8 @@ def run_v3(*, count: int, category: str, dry_run: bool, export: bool) -> int:
         title=c.title, subtitle=c.subtitle, slides=slides,
         slides_json=slides_to_json(slides),
         summary=" · ".join(p.name_en for p in c.products[:5]),
-        partner="yesstyle", partner_base_url="https://www.yesstyle.com",
+        # 어필리에이트: AliExpress (승인 장벽 낮음, K-뷰티 공식스토어 취급). 승인 후 rc→PID 입력.
+        partner="aliexpress", partner_base_url="https://www.aliexpress.com",
         seo_line=seo_line, seo_keywords=seo_kw,
     )
     return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)

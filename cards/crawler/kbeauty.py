@@ -250,7 +250,7 @@ def to_slides(content: KBeautyContent) -> list[Slide]:
         body = [f"≈ ${p.price_usd} (approx)"]
         if p.note:
             body.append(p.note)
-        body.append("Ships worldwide via YesStyle")
+        body.append("Ships worldwide")
         img = _download_image(p.image_url, cache, tag=f"{i:02d}")   # 실제 상품 사진
         slides.append(Slide(
             type="reveal", badge=f"{i:02d}",
