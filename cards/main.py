@@ -223,6 +223,44 @@ def _pinterest_five(slides: list[Slide]) -> list[Slide]:
     return (hook + picked)[:5]
 
 
+def _build_pin_slideshow(slide_paths: list, out_path: Path, *, sec: float = 2.8) -> bool:
+    """Pinterest 단일 '영상 핀'용 슬라이드쇼 MP4 생성 (캐러셀 없는 계정 대비).
+
+    캐러셀 기능이 없는 계정에선 여러 장을 한 핀에 못 넣으므로, 전 슬라이드를
+    2:3 슬라이드쇼 영상 1개로 만들어 그대로 영상 핀으로 올리게 한다. ffmpeg 필요.
+    """
+    import os
+    import subprocess
+    import tempfile
+    if not slide_paths:
+        return False
+    abs_paths = [Path(p).resolve() for p in slide_paths]   # concat은 절대경로 필요
+    lines = []
+    for p in abs_paths:
+        lines.append(f"file '{p}'")
+        lines.append(f"duration {sec}")
+    lines.append(f"file '{abs_paths[-1]}'")   # 마지막 프레임 유지 (concat 특성)
+    fd, listfile = tempfile.mkstemp(suffix=".txt")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "concat",
+               "-safe", "0", "-i", listfile,
+               "-vf", ("scale=1000:1500:force_original_aspect_ratio=decrease,"
+                       "pad=1000:1500:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"),
+               "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p",
+               "-movflags", "+faststart", str(out_path), "-y"]
+        subprocess.run(cmd, capture_output=True, timeout=180, check=False)
+    except Exception:
+        return False
+    finally:
+        try:
+            os.unlink(listfile)
+        except OSError:
+            pass
+    return out_path.exists() and out_path.stat().st_size > 50_000
+
+
 def run_export(job: PinJob) -> int:
     """수동 게시용 내보내기 — 전체 캐러셀을 3비율로 렌더 + caption.txt. 업로드/API 없음."""
     from cards.affiliate.links import build_link
@@ -235,11 +273,17 @@ def run_export(job: PinJob) -> int:
     captions = _build_captions(job, affiliate_url)   # Phase3: 플랫폼별 최적화
 
     counts = {}
+    pin_paths: list = []
     for ratio in ("pinterest", "instagram", "tiktok"):
         paths = renderer.render(job.slides, ratio, out_dir / ratio)
         # 각 플랫폼 폴더에 그 플랫폼용 캡션 (Pinterest=키워드, IG=태그, TikTok=짧게)
         (out_dir / ratio / "caption.txt").write_text(captions[ratio], encoding="utf-8")
         counts[ratio] = len(paths)
+        if ratio == "pinterest":
+            pin_paths = paths
+
+    # Pinterest 단일 영상 핀 (캐러셀 없는 계정용) — 전 슬라이드 슬라이드쇼 MP4
+    has_video = _build_pin_slideshow(pin_paths, out_dir / "pinterest_slideshow.mp4")
 
     # 위키미디어 사진 저작자표시 전체 목록 (CC 준수 — 첫 댓글에 붙이기 권장)
     if job.photo_credits:
@@ -262,11 +306,13 @@ def run_export(job: PinJob) -> int:
 
     log.info("✅ 수동 게시용 내보내기 완료")
     print(f"\n📁 {out_dir}")
+    if has_video:
+        print(f"   ├─ pinterest_slideshow.mp4  ⭐ Pinterest는 이 영상 1개만 올리기 (캐러셀 불필요)")
     print(f"   ├─ pinterest/  ({counts.get('pinterest',0)}장 2:3 + caption.txt · 키워드 우선)")
-    print(f"   │   └─ carousel5/ ({counts.get('carousel5',0)}장 · ⭐Pinterest는 이 폴더 그대로 올리기, 최대5장)")
+    print(f"   │   └─ carousel5/ ({counts.get('carousel5',0)}장 · 캐러셀 되는 계정용)")
     print(f"   ├─ instagram/  ({counts.get('instagram',0)}장 4:5 + caption.txt · 키워드+해시태그)")
     print(f"   └─ tiktok/     ({counts.get('tiktok',0)}장 9:16 + caption.txt · 짧게+키워드)")
-    print(f"\n→ Pinterest: pinterest/carousel5/ (5장) · IG/TikTok: 해당 폴더 10장 + caption.txt")
+    print(f"\n→ Pinterest: pinterest_slideshow.mp4 (영상 핀) · IG/TikTok: 해당 폴더 10장 + caption.txt")
     return 0
 
 
