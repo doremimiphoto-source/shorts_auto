@@ -170,18 +170,21 @@ def _build_captions(job: PinJob, affiliate_url: str) -> dict[str, str]:
     seo = _seo_paragraph(job)
     # 위키미디어 사진 사용 시 저작자표시(CC 준수). 전체 목록은 credits.txt.
     credit_line = "📷 Photos: Wikimedia Commons & Unsplash\n" if job.photo_credits else ""
-    note = (f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
-            f"어필리에이트 링크: {affiliate_url}")
+    # IG/TikTok = 링크가 bio 1개뿐 → Linktree. Pinterest = 핀마다 직접 링크(리다이렉트 금지).
+    bio_note = (f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
+                f"어필리에이트 링크(프로필 bio에): {affiliate_url}")
+    pin_note = (f"---\n[게시자 참고 — 캡션엔 넣지 말 것]\n"
+                f"핀 destination 링크에 이 URL 그대로 입력: {affiliate_url}\n"
+                f"⚠️ Linktree·단축·리다이렉트 URL 금지 (Pinterest 스팸 차단). 직접 어필리 URL만.")
 
     pinterest = (
         f"{job.title}\n\n"
         f"{seo}\n\n"
         f"📌 In this list: {job.summary}\n\n"
-        f"🔗 {LINKTREE_URL}\n"
-        f"{AFFILIATE_DISCLOSURE}\n\n"
+        f"{AFFILIATE_DISCLOSURE}\n\n"      # 링크는 핀 destination에 (본문 URL 없음 = 컴플라이언스)
         f"{credit_line}"
         f"{_hashtag_str(job.vertical, 4)}\n\n"      # Pinterest: 키워드 우선·태그 소수
-        f"{note}"
+        f"{pin_note}"
     )
     instagram = (
         f"{job.title}\n{job.subtitle}\n\n"
@@ -192,7 +195,7 @@ def _build_captions(job: PinJob, affiliate_url: str) -> dict[str, str]:
         f"{AFFILIATE_DISCLOSURE}\n\n"
         f"{credit_line}"
         f"{_hashtag_str(job.vertical, 15)}\n\n"     # IG: 태그 도달 기여
-        f"{note}"
+        f"{bio_note}"
     )
     tiktok = (
         f"{job.title} 👀\n"
@@ -202,7 +205,7 @@ def _build_captions(job: PinJob, affiliate_url: str) -> dict[str, str]:
         f"{AFFILIATE_DISCLOSURE}\n\n"
         f"{credit_line}"
         f"{_hashtag_str(job.vertical, 6)}\n\n"      # TikTok: 소수 태그 + 키워드
-        f"{note}"
+        f"{bio_note}"
     )
     return {"pinterest": pinterest, "instagram": instagram, "tiktok": tiktok}
 
