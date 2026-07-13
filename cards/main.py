@@ -77,6 +77,7 @@ class PinJob:
     seo_line: str = ""       # Phase3: 키워드 앞배치 자연문 (Pinterest 검색 랭킹용)
     seo_keywords: list[str] = field(default_factory=list)  # Phase3: 검색어(실데이터)
     photo_credits: list[str] = field(default_factory=list)  # 위키미디어 사진 저작자표시
+    label: str = ""          # export 폴더 구분용 (카테고리/주제) — 같은 날 다중 세트 충돌 방지
 
 
 def _publish_pinterest(job: PinJob, *, dry_run: bool) -> int:
@@ -269,7 +270,8 @@ def run_export(job: PinJob) -> int:
     """수동 게시용 내보내기 — 전체 캐러셀을 3비율로 렌더 + caption.txt. 업로드/API 없음."""
     from cards.affiliate.links import build_link
     campaign = _campaign_id()
-    out_dir = VERTICAL_OUTPUT[job.vertical] / f"export_{campaign}"
+    folder = f"export_{campaign}_{job.label}" if job.label else f"export_{campaign}"
+    out_dir = VERTICAL_OUTPUT[job.vertical] / folder
     renderer = CarouselRenderer()
 
     affiliate_url = build_link(job.partner, platform="manual",
@@ -370,7 +372,7 @@ def run_v3(*, count: int, category: str, dry_run: bool, export: bool) -> int:
         summary=" · ".join(p.name_en for p in c.products[:5]),
         # 어필리에이트: AliExpress (승인 장벽 낮음, K-뷰티 공식스토어 취급). 승인 후 rc→PID 입력.
         partner="aliexpress", partner_base_url="https://www.aliexpress.com",
-        seo_line=seo_line, seo_keywords=seo_kw,
+        seo_line=seo_line, seo_keywords=seo_kw, label=category,
     )
     return run_export(job) if export else _publish_pinterest(job, dry_run=dry_run)
 
