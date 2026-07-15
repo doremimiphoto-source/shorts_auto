@@ -38,16 +38,16 @@ _CATEGORY_QUERY = {
     "essence": "에센스",
 }
 
-# 유명 K-뷰티 브랜드 allowlist (한국어 검색어, 영어 표기) — 전부 실재 한국 브랜드,
-# 글로벌 인지도 있고 YesStyle 등에서 해외 배송 가능.
+# K-뷰티 브랜드 allowlist (한국어 검색어, 영어 표기).
+# ★AliExpress에 어필리 상품이 많은 '인디 스킨케어' 브랜드로 한정 → 카드 제품 ↔ 어필리 링크 일치.
+# (프리미엄·백화점 브랜드 Hera·Laneige·d'Alba·Dr.G 등은 AliExpress에 없어 제외)
 K_BEAUTY_BRANDS: list[tuple[str, str]] = [
     ("코스알엑스", "Cosrx"), ("조선미녀", "Beauty of Joseon"), ("아누아", "Anua"),
-    ("이니스프리", "Innisfree"), ("토리든", "Torriden"), ("메디큐브", "Medicube"),
-    ("라운드랩", "Round Lab"), ("넘버즈인", "Numbuzin"), ("마녀공장", "Manyo Factory"),
-    ("퓨리토", "Purito"), ("티르티르", "TIRTIR"), ("아비브", "Abib"),
-    ("구달", "Goodal"), ("바닐라코", "Banila Co"), ("헤라", "Hera"),
-    ("라네즈", "Laneige"), ("믹순", "Mixsoon"), ("닥터지", "Dr.G"),
-    ("달바", "d'Alba"), ("스킨천사", "Skin1004"),
+    ("토리든", "Torriden"), ("메디큐브", "Medicube"), ("라운드랩", "Round Lab"),
+    ("넘버즈인", "Numbuzin"), ("마녀공장", "Manyo Factory"), ("퓨리토", "Purito"),
+    ("티르티르", "TIRTIR"), ("아비브", "Abib"), ("구달", "Goodal"),
+    ("믹순", "Mixsoon"), ("스킨천사", "Skin1004"), ("썸바이미", "Some By Mi"),
+    ("이즈앤트리", "Isntree"), ("아임프롬", "I'm From"), ("스킨푸드", "Skinfood"),
 ]
 
 
