@@ -46,7 +46,7 @@ def make_avatar() -> Path:
     f_name = _f_bold(64)
     _center(draw, base, 710, "HiddenFindsDaily", f_name, PALETTE["main"], W)
     f_tag = _f_med(38)
-    _center(draw, base, 800, "Travel · K-Beauty · Finds", f_tag, PALETTE["sub"], W)
+    _center(draw, base, 800, "Korean Skincare · K-Beauty", f_tag, PALETTE["sub"], W)
 
     OUT.mkdir(parents=True, exist_ok=True)
     p = OUT / "avatar.jpg"
@@ -67,7 +67,7 @@ def make_cover() -> Path:
     draw.text((pad + 48, 150), "HiddenFindsDaily", font=f_name, fill=PALETTE["main"])
     f_tag = _f_med(46)
     _draw_rich(base, (pad + 52, 300),
-               "Daily hidden gems  ·  ✈️ Travel  ·  💄 K-Beauty",
+               "💧 Korean Skincare  ·  💄 K-Beauty Finds Daily",
                f_tag, PALETTE["sub"])
 
     OUT.mkdir(parents=True, exist_ok=True)
